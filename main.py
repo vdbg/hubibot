@@ -1,5 +1,8 @@
 #!/bin/python3
 
+# https://github.com/danielorf/pyhubitat
+from pyhubitat import MakerAPI
+
 import logging
 from pathlib import Path
 
@@ -15,37 +18,83 @@ import yaml
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                      level=logging.INFO)
 
-def start(update: Update, context: CallbackContext):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="I'm a bot, please talk to me!")
+class bot:
+    def __init__(self, updater: Updater, hubitat: MakerAPI):
+        self.updater = updater
+        self.hubitat = hubitat
+        self.help = list()
+        self._devices_cache = None
 
-def echo(update: Update, context: CallbackContext):
-    context.bot.send_message(chat_id=update.effective_chat.id, text=update.message.text)
+    def get_devices(self):
+        if self._devices_cache is None:
+            logging.info("Refreshing device cache")
+            self._devices_cache = self.hubitat.list_devices()
+        return self._devices_cache
+    
+    def send_text(self, update: Update, context: CallbackContext, text: str):
+        if len(text) > 0:
+            context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
-def caps(update: Update, context: CallbackContext):
-    text_caps = ' '.join(context.args).upper()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=text_caps)
+    def command_start(self, update: Update, context: CallbackContext):
+        self.send_text(update, context, "I'm a bot, please talk to me!")
 
-def unknown(update: Update, context: CallbackContext):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="Sorry, I didn't understand that command.")
+    def command_echo(self, update: Update, context: CallbackContext):
+        self.send_text(update, context, update.message.text)
 
-def main(conf: dict):
-    updater = Updater(token=conf["token"], use_context=True)
-    dispatcher = updater.dispatcher
+    def command_Caps(self, update: Update, context: CallbackContext):
+        text_caps = ' '.join(context.args).upper()
+        self.send_text(update, context, text_caps)
 
-    start_handler = CommandHandler('start', start)
-    dispatcher.add_handler(start_handler)
+    def command_unknows(self, update: Update, context: CallbackContext):
+        self.send_text(update, context, "Unknown command.")
+        self.command_help(update, context)
 
-    echo_handler = MessageHandler(Filters.text & (~Filters.command), echo)
-    dispatcher.add_handler(echo_handler)
+    def command_list(self, update: Update, context: CallbackContext):
+        devices = self.get_devices()
+        for device in devices:
+            self.send_text(update, context, f"{device['name']}: {device['type']}")
 
-    caps_handler = CommandHandler('caps', caps)
-    dispatcher.add_handler(caps_handler)
+    def command_help(self, update: Update, context: CallbackContext):
+        for k in self.help:
+            self.send_text(update, context, k)
 
-    unknown_handler = MessageHandler(Filters.command, unknown)
-    dispatcher.add_handler(unknown_handler)
+    def add_command(self, cmd: list, hlp: str, fn):
+        helptxt = ""
+        for str in cmd:
+            if len(helptxt) != 0:
+                helptxt = helptxt + ", "
+            helptxt = helptxt + "/" + str
+            self.updater.dispatcher.add_handler(CommandHandler(str, fn))
+        helptxt = helptxt + ": " + hlp
+        self.help.append(helptxt)
 
-    updater.start_polling()
-    updater.idle()
+    def configure(self):
+        dispatcher = self.updater.dispatcher
+
+        self.add_command(['start', 's'],'something', self.command_start)
+        self.add_command(['caps', 'c'], 'caps mode', self.command_Caps)
+        # sadly '/?' is not a valid command
+        self.add_command(['help','h'], 'display help', self.command_help)
+        self.add_command(['list','l'], 'get devices', self.command_list)
+
+        unknown_handler = MessageHandler(Filters.command, self.command_unknows)
+        dispatcher.add_handler(unknown_handler)
+
+        echo_handler = MessageHandler(Filters.text & (~Filters.command), self.command_echo)
+        dispatcher.add_handler(echo_handler)
+        
+    def run(self):
+        self.updater.start_polling()
+        self.updater.idle()
+
+def get_hubitat(conf: dict):
+    hub = f"{conf['url']}apps/api/{conf['appid']}"
+    logging.info(f"Connecting to hubitat app {hub}")
+    return MakerAPI(conf["token"], hub)
+
+def get_telegram(conf: dict):
+    return Updater(token=conf["token"], use_context=True)
+
 
 try:
     with open(Path(__file__).with_name("config.yaml")) as config_file:
@@ -53,12 +102,20 @@ try:
 
         if "telegram" not in config:
             raise ValueError("Invalid config.yaml. Section telegram required.")
+
+        if "hubitat" not in config:
+            raise ValueError("Invalid config.yaml. Section hubitat required.")
         
         if "main" in config:
             conf = config["main"]
-            #logging.getLogger().setLevel(logging.getLevelName(conf["logverbosity"]))
+            logging.getLogger().setLevel(logging.getLevelName(conf["logverbosity"]))
 
-        main(config["telegram"])
+        hubitat = get_hubitat(config["hubitat"])
+        telegram = get_telegram(config["telegram"])
+        mybot = bot(telegram, hubitat)
+        mybot.configure()
+        mybot.run()
+
         exit(0)
 
 except FileNotFoundError as e:

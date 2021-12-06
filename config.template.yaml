@@ -1,8 +1,10 @@
 telegram:
-  token: '2135064458:AAEpefZu2GKhp_FupW9BLQd6uf-QS0cYTtg'
+  token: 'enter your telegram token here'
 
 hubitat:
-  token: 'pipo'
+  url: 'http://ipaddress/'               # what you type in the browser to log on tu hubitat
+  token: 'enter your hubitat token here' # log in to hubitat, go in apps, Maker API, look at token in examples
+  appid: 00                              # log in to hubitat, go in apps, Maker API, look at id in url
 
 main:
   logverbosity: VERBOSE 
