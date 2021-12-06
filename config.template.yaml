@@ -1,0 +1,8 @@
+telegram:
+  token: '2135064458:AAEpefZu2GKhp_FupW9BLQd6uf-QS0cYTtg'
+
+hubitat:
+  token: 'pipo'
+
+main:
+  logverbosity: VERBOSE 
