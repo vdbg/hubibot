@@ -1,5 +1,6 @@
 telegram:
-  token: 'enter your telegram token here'
+  token: 'enter your telegram token here' # search for Botfather in your favorite search engine
+  allowed_users_ids: [ 1678266620, 1234 ] # ask userinfobot to get id. Can't be usernames because not immutable or unique
 
 hubitat:
   url: 'http://ipaddress/'               # what you type in the browser to log on tu hubitat
@@ -7,4 +8,4 @@ hubitat:
   appid: 00                              # log in to hubitat, go in apps, Maker API, look at id in url
 
 main:
-  logverbosity: VERBOSE 
+  logverbosity: DEBUG  # possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL

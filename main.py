@@ -19,11 +19,12 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                      level=logging.INFO)
 
 class bot:
-    def __init__(self, updater: Updater, hubitat: MakerAPI):
+    def __init__(self, updater: Updater, hubitat: MakerAPI, allowed_users: list):
         self.updater = updater
         self.hubitat = hubitat
         self.help = list()
         self._devices_cache = None
+        self.allowed_users = allowed_users
 
     def get_devices(self):
         if self._devices_cache is None:
@@ -64,7 +65,7 @@ class bot:
             if len(helptxt) != 0:
                 helptxt = helptxt + ", "
             helptxt = helptxt + "/" + str
-            self.updater.dispatcher.add_handler(CommandHandler(str, fn))
+            self.updater.dispatcher.add_handler(CommandHandler(str,fn, Filters.user(self.allowed_users)))
         helptxt = helptxt + ": " + hlp
         self.help.append(helptxt)
 
@@ -112,7 +113,12 @@ try:
 
         hubitat = get_hubitat(config["hubitat"])
         telegram = get_telegram(config["telegram"])
-        mybot = bot(telegram, hubitat)
+
+        allowed_users = config["telegram"]["allowed_users"]
+        for user in allowed_users:
+            logging.debug(f"Allowed user: {user}")
+
+        mybot = bot(telegram, hubitat, allowed_users)
         mybot.configure()
         mybot.run()
 
