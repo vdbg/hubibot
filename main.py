@@ -34,7 +34,7 @@ class homebot:
             self._devices_cache = self.hubitat.list_devices()
         return self._devices_cache
 
-    def get_ordered_devices(self):
+    def get_ordered_devices(self) -> dict:
         # devices are returned in Id order. Make it alphabetical instead
         if self._ordered_devices is None:
             tmp = {}
@@ -43,11 +43,11 @@ class homebot:
             self._ordered_devices = tmp
         return self._ordered_devices
 
-    def send_text(self, update: Update, context: CallbackContext, text: str):
+    def send_text(self, update: Update, context: CallbackContext, text: str) -> None:
         if len(text) > 0:
             context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
-    def add_command(self, cmd: list, hlp: str, fn):
+    def add_command(self, cmd: list, hlp: str, fn) -> None:
         helptxt = ""
         for str in cmd:
             if len(helptxt) != 0:
@@ -57,24 +57,24 @@ class homebot:
         helptxt = helptxt + ": " + hlp
         self.list_commands.append(helptxt)
 
-    def command_start(self, update: Update, context: CallbackContext):
+    def command_start(self, update: Update, context: CallbackContext) -> None:
         # TODO: make it a real command
         self.send_text(update, context, "I'm a bot, please talk to me!")
 
-    def command_echo(self, update: Update, context: CallbackContext):
+    def command_echo(self, update: Update, context: CallbackContext) -> None:
         # TODO: make it a real command
         self.send_text(update, context, update.message.text)
 
-    def command_caps(self, update: Update, context: CallbackContext):
+    def command_caps(self, update: Update, context: CallbackContext) -> None:
         # TODO: make it a real command
         text_caps = ' '.join(context.args).upper()
         self.send_text(update, context, text_caps)
 
-    def command_unknown(self, update: Update, context: CallbackContext):
+    def command_unknown(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "Unknown command.")
         self.command_help(update, context)
 
-    def command_list_devices(self, update: Update, context: CallbackContext):
+    def command_list_devices(self, update: Update, context: CallbackContext) -> None:
         devices_text = list()
         devices_text.append("Available devices:")
         for name, info in self.get_ordered_devices().items():
@@ -82,19 +82,19 @@ class homebot:
 
         self.send_text(update, context, "\n".join(devices_text))
 
-    def command_help(self, update: Update, context: CallbackContext):
+    def command_help(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "Available commands:\n" + "\n".join(self.list_commands))
 
-    def command_unknown_user(self, update: Update, context: CallbackContext):
+    def command_unknown_user(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "Unauthorized user :p")
 
-    def command_turn_on(self, update: Update, context: CallbackContext):
+    def command_turn_on(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "TODO")
 
-    def command_turn_off(self, update: Update, context: CallbackContext):
+    def command_turn_off(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "TODO")
 
-    def configure(self):
+    def configure(self) -> None:
         dispatcher = self.updater.dispatcher
 
         # Reject anyone we don't know
@@ -110,7 +110,7 @@ class homebot:
         dispatcher.add_handler(MessageHandler(Filters.command, self.command_unknown))
         dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_echo))
 
-    def run(self):
+    def run(self) -> None:
         self.updater.start_polling()
         self.updater.idle()
 

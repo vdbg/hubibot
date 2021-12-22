@@ -1,5 +1,5 @@
 
-# Telegram robot for Hubitat
+# HomeBot: Telegram robot for Hubitat
 
 This script enables a [Telegram](https://telegram.org/) bot to handle commands against devices managed by a [Hubitat](https://hubitat.com/) hub.
 
