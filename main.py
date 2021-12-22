@@ -13,51 +13,39 @@ from telegram.ext import Updater
 from telegram.ext import CommandHandler
 from telegram.ext import MessageHandler, Filters
 
-import yaml 
+import yaml
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                     level=logging.INFO)
+                    level=logging.INFO)
 
-class bot:
+
+class homebot:
     def __init__(self, updater: Updater, hubitat: MakerAPI, allowed_users: list):
         self.updater = updater
         self.hubitat = hubitat
-        self.help = list()
-        self._devices_cache = None
+        self.list_commands = list()
         self.allowed_users = allowed_users
+        self._devices_cache = None
+        self._ordered_devices = None
 
     def get_devices(self):
         if self._devices_cache is None:
             logging.info("Refreshing device cache")
             self._devices_cache = self.hubitat.list_devices()
         return self._devices_cache
-    
+
+    def get_ordered_devices(self):
+        # devices are returned in Id order. Make it alphabetical instead
+        if self._ordered_devices is None:
+            tmp = {}
+            for device in self.get_devices():
+                tmp[device['label']] = device['type']
+            self._ordered_devices = tmp
+        return self._ordered_devices
+
     def send_text(self, update: Update, context: CallbackContext, text: str):
         if len(text) > 0:
             context.bot.send_message(chat_id=update.effective_chat.id, text=text)
-
-    def command_start(self, update: Update, context: CallbackContext):
-        self.send_text(update, context, "I'm a bot, please talk to me!")
-
-    def command_echo(self, update: Update, context: CallbackContext):
-        self.send_text(update, context, update.message.text)
-
-    def command_Caps(self, update: Update, context: CallbackContext):
-        text_caps = ' '.join(context.args).upper()
-        self.send_text(update, context, text_caps)
-
-    def command_unknows(self, update: Update, context: CallbackContext):
-        self.send_text(update, context, "Unknown command.")
-        self.command_help(update, context)
-
-    def command_list(self, update: Update, context: CallbackContext):
-        devices = self.get_devices()
-        for device in devices:
-            self.send_text(update, context, f"{device['name']}: {device['type']}")
-
-    def command_help(self, update: Update, context: CallbackContext):
-        for k in self.help:
-            self.send_text(update, context, k)
 
     def add_command(self, cmd: list, hlp: str, fn):
         helptxt = ""
@@ -65,33 +53,73 @@ class bot:
             if len(helptxt) != 0:
                 helptxt = helptxt + ", "
             helptxt = helptxt + "/" + str
-            self.updater.dispatcher.add_handler(CommandHandler(str,fn, Filters.user(self.allowed_users)))
+            self.updater.dispatcher.add_handler(CommandHandler(str, fn, Filters.user(self.allowed_users)))
         helptxt = helptxt + ": " + hlp
-        self.help.append(helptxt)
+        self.list_commands.append(helptxt)
+
+    def command_start(self, update: Update, context: CallbackContext):
+        # TODO: make it a real command
+        self.send_text(update, context, "I'm a bot, please talk to me!")
+
+    def command_echo(self, update: Update, context: CallbackContext):
+        # TODO: make it a real command
+        self.send_text(update, context, update.message.text)
+
+    def command_caps(self, update: Update, context: CallbackContext):
+        # TODO: make it a real command
+        text_caps = ' '.join(context.args).upper()
+        self.send_text(update, context, text_caps)
+
+    def command_unknown(self, update: Update, context: CallbackContext):
+        self.send_text(update, context, "Unknown command.")
+        self.command_help(update, context)
+
+    def command_list_devices(self, update: Update, context: CallbackContext):
+        devices_text = list()
+        devices_text.append("Available devices:")
+        for name, info in self.get_ordered_devices().items():
+            devices_text.append(f"{name}: {info}")
+
+        self.send_text(update, context, "\n".join(devices_text))
+
+    def command_help(self, update: Update, context: CallbackContext):
+        self.send_text(update, context, "Available commands:\n" + "\n".join(self.list_commands))
+
+    def command_unknown_user(self, update: Update, context: CallbackContext):
+        self.send_text(update, context, "Unauthorized user :p")
+
+    def command_turn_on(self, update: Update, context: CallbackContext):
+        self.send_text(update, context, "TODO")
+
+    def command_turn_off(self, update: Update, context: CallbackContext):
+        self.send_text(update, context, "TODO")
 
     def configure(self):
         dispatcher = self.updater.dispatcher
 
-        self.add_command(['start', 's'],'something', self.command_start)
-        self.add_command(['caps', 'c'], 'caps mode', self.command_Caps)
-        # sadly '/?' is not a valid command
-        self.add_command(['help','h'], 'display help', self.command_help)
-        self.add_command(['list','l'], 'get devices', self.command_list)
+        # Reject anyone we don't know
+        self.updater.dispatcher.add_handler(MessageHandler(~Filters.user(self.allowed_users), self.command_unknown_user))
 
-        unknown_handler = MessageHandler(Filters.command, self.command_unknows)
-        dispatcher.add_handler(unknown_handler)
+        self.add_command(['start', 's'], 'something', self.command_start)
+        self.add_command(['caps', 'c'], 'caps mode', self.command_caps)
+        self.add_command(['help', 'h'], 'display help', self.command_help)  # sadly '/?' is not a valid command
+        self.add_command(['list', 'l'], 'get devices', self.command_list_devices)
+        self.add_command(['on'], 'turn on device', self.command_turn_on)
+        self.add_command(['off'], 'turn off device', self.command_turn_off)
 
-        echo_handler = MessageHandler(Filters.text & (~Filters.command), self.command_echo)
-        dispatcher.add_handler(echo_handler)
-        
+        dispatcher.add_handler(MessageHandler(Filters.command, self.command_unknown))
+        dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_echo))
+
     def run(self):
         self.updater.start_polling()
         self.updater.idle()
 
+
 def get_hubitat(conf: dict):
     hub = f"{conf['url']}apps/api/{conf['appid']}"
-    logging.info(f"Connecting to hubitat app {hub}")
+    logging.info(f"Connecting to hubitat Maker API app {hub}")
     return MakerAPI(conf["token"], hub)
+
 
 def get_telegram(conf: dict):
     return Updater(token=conf["token"], use_context=True)
@@ -106,7 +134,7 @@ try:
 
         if "hubitat" not in config:
             raise ValueError("Invalid config.yaml. Section hubitat required.")
-        
+
         if "main" in config:
             conf = config["main"]
             logging.getLogger().setLevel(logging.getLevelName(conf["logverbosity"]))
@@ -114,13 +142,13 @@ try:
         hubitat = get_hubitat(config["hubitat"])
         telegram = get_telegram(config["telegram"])
 
-        allowed_users = config["telegram"]["allowed_users"]
+        allowed_users = config["telegram"]["allowed_users_ids"]
         for user in allowed_users:
             logging.debug(f"Allowed user: {user}")
 
-        mybot = bot(telegram, hubitat, allowed_users)
-        mybot.configure()
-        mybot.run()
+        hal = homebot(telegram, hubitat, allowed_users)
+        hal.configure()
+        hal.run()
 
         exit(0)
 
