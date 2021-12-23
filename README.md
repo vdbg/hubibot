@@ -14,8 +14,8 @@ This script enables a [Telegram](https://telegram.org/) bot to handle commands a
 
 ## Setup
 
-* `git clone` repo or download source code
-* cd into directory containing source code
+* `git clone` the repo or download the source code
+* cd into the directory containing the source code
 * Copy the `template.config.yaml` file to `config.yaml`
 * Modify `config.yaml` by following the instructions in the file
 * Run `pip3 install -r requirements.txt` 

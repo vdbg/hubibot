@@ -37,20 +37,17 @@ class homebot:
     def get_ordered_devices(self) -> dict:
         # devices are returned in Id order. Make it alphabetical instead
         if self._ordered_devices is None:
-            tmp = {}
-            for device in self.get_devices():
-                tmp[device['label']] = device['type']
-            self._ordered_devices = tmp
+            self._ordered_devices = {device['label']: device['type'] for device in self.get_devices()}
         return self._ordered_devices
 
     def send_text(self, update: Update, context: CallbackContext, text: str) -> None:
-        if len(text) > 0:
+        if text:
             context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
     def add_command(self, cmd: list, hlp: str, fn) -> None:
         helptxt = ""
         for str in cmd:
-            if len(helptxt) != 0:
+            if helptxt:
                 helptxt = helptxt + ", "
             helptxt = helptxt + "/" + str
             self.updater.dispatcher.add_handler(CommandHandler(str, fn, Filters.user(self.allowed_users)))
