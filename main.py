@@ -20,13 +20,18 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 
 class homebot:
-    def __init__(self, updater: Updater, hubitat: MakerAPI, allowed_users: list):
+    def __init__(self, updater: Updater, hubitat: MakerAPI, allowed_users: list, allowed_device_ids: list, rejected_device_ids: list):
         self.updater = updater
         self.hubitat = hubitat
         self.list_commands = list()
         self.allowed_users = allowed_users
+        self.allowed_device_ids = set(map(int, allowed_device_ids))
+        self.rejected_device_ids = set(map(int, rejected_device_ids))
         self._devices_cache = None
         self._ordered_devices = None
+
+        logging.debug(f"Allowed device ids: {self.allowed_device_ids}")
+        logging.debug(f"Rejected device ids: {self.rejected_device_ids}")
 
     def get_devices(self):
         if self._devices_cache is None:
@@ -37,8 +42,21 @@ class homebot:
     def get_ordered_devices(self) -> dict:
         # devices are returned in Id order. Make it alphabetical instead
         if self._ordered_devices is None:
-            self._ordered_devices = {device['label']: device['type'] for device in self.get_devices()}
+            self._ordered_devices = {
+                device['label']: f"{device['type']},{device['id']}"
+                for device in self.get_devices()
+                if self.is_allowed_device(device)}
         return self._ordered_devices
+
+    def is_allowed_device(self, device) -> bool:
+        id = int(device["id"])
+        if self.allowed_device_ids and not id in self.allowed_device_ids:
+            logging.debug(f"Removing device {device['label']}:{id} because not in allowed list.")
+            return False
+        if self.rejected_device_ids and id in self.rejected_device_ids:
+            logging.debug(f"Removing device {device['label']}:{id} because in rejected list.")
+            return False
+        return True
 
     def send_text(self, update: Update, context: CallbackContext, text: str) -> None:
         if text:
@@ -136,14 +154,16 @@ try:
             conf = config["main"]
             logging.getLogger().setLevel(logging.getLevelName(conf["logverbosity"]))
 
-        hubitat = get_hubitat(config["hubitat"])
-        telegram = get_telegram(config["telegram"])
+        hubitat_conf = config["hubitat"]
+        telegram_conf = config["telegram"]
+        hubitat = get_hubitat(hubitat_conf)
+        telegram = get_telegram(telegram_conf)
 
-        allowed_users = config["telegram"]["allowed_users_ids"]
+        allowed_users = telegram_conf["allowed_users_ids"]
         for user in allowed_users:
             logging.debug(f"Allowed user: {user}")
 
-        hal = homebot(telegram, hubitat, allowed_users)
+        hal = homebot(telegram, hubitat, allowed_users, hubitat_conf["allowed_device_ids"], hubitat_conf["rejected_device_ids"])
         hal.configure()
         hal.run()
 
