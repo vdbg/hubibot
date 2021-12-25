@@ -19,12 +19,21 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 
 
+class Telegram:
+    def __init__(self, conf: dict):
+        self.updater = Updater(token=conf["token"], use_context=True)
+        self.dispatcher = self.updater.dispatcher
+        self.allowed_users = conf["allowed_users_ids"]
+        for user in self.allowed_users:
+            logging.debug(f"Allowed user: {user}")
+        self.rejected_message = conf["rejected_message"]
+
+
 class homebot:
-    def __init__(self, updater: Updater, hubitat: MakerAPI, allowed_users: list, allowed_device_ids: list, rejected_device_ids: list):
-        self.updater = updater
+    def __init__(self, telegram: Telegram, hubitat: MakerAPI, allowed_device_ids: list, rejected_device_ids: list):
+        self.telegram = telegram
         self.hubitat = hubitat
         self.list_commands = list()
-        self.allowed_users = allowed_users
         self.allowed_device_ids = set(map(int, allowed_device_ids))
         self.rejected_device_ids = set(map(int, rejected_device_ids))
         self._devices_cache = None
@@ -83,7 +92,7 @@ class homebot:
             if helptxt:
                 helptxt = helptxt + ", "
             helptxt = helptxt + "/" + str
-            self.updater.dispatcher.add_handler(CommandHandler(str, fn, Filters.user(self.allowed_users)))
+            self.telegram.dispatcher.add_handler(CommandHandler(str, fn, Filters.user(self.telegram.allowed_users)))
         helptxt = helptxt + ": " + hlp
         self.list_commands.append(helptxt)
 
@@ -138,7 +147,7 @@ class homebot:
         self.send_text(update, context, "Available commands:\n" + "\n".join(self.list_commands))
 
     def command_unknown_user(self, update: Update, context: CallbackContext) -> None:
-        self.send_text(update, context, "Unauthorized user :p")
+        self.send_text(update, context, self.telegram.rejected_message)
 
     def command_turn_on(self, update: Update, context: CallbackContext) -> None:
         self.device_actuator(update, context, "on")
@@ -147,10 +156,10 @@ class homebot:
         self.device_actuator(update, context, "off")
 
     def configure(self) -> None:
-        dispatcher = self.updater.dispatcher
+        dispatcher = self.telegram.dispatcher
 
         # Reject anyone we don't know
-        self.updater.dispatcher.add_handler(MessageHandler(~Filters.user(self.allowed_users), self.command_unknown_user))
+        dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.allowed_users), self.command_unknown_user))
 
         self.add_command(['start', 's'], 'something', self.command_start)
         self.add_command(['caps', 'c'], 'caps mode', self.command_caps)
@@ -164,18 +173,14 @@ class homebot:
         dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_echo))
 
     def run(self) -> None:
-        self.updater.start_polling()
-        self.updater.idle()
+        self.telegram.updater.start_polling()
+        self.telegram.updater.idle()
 
 
 def get_hubitat(conf: dict):
     hub = f"{conf['url']}apps/api/{conf['appid']}"
     logging.info(f"Connecting to hubitat Maker API app {hub}")
     return MakerAPI(conf["token"], hub)
-
-
-def get_telegram(conf: dict):
-    return Updater(token=conf["token"], use_context=True)
 
 
 try:
@@ -193,15 +198,10 @@ try:
             logging.getLogger().setLevel(logging.getLevelName(conf["logverbosity"]))
 
         hubitat_conf = config["hubitat"]
-        telegram_conf = config["telegram"]
         hubitat = get_hubitat(hubitat_conf)
-        telegram = get_telegram(telegram_conf)
+        telegram = Telegram(config["telegram"])
 
-        allowed_users = telegram_conf["allowed_users_ids"]
-        for user in allowed_users:
-            logging.debug(f"Allowed user: {user}")
-
-        hal = homebot(telegram, hubitat, allowed_users, hubitat_conf["allowed_device_ids"], hubitat_conf["rejected_device_ids"])
+        hal = homebot(telegram, hubitat, hubitat_conf["allowed_device_ids"], hubitat_conf["rejected_device_ids"])
         hal.configure()
         hal.run()
 
