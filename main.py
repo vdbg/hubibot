@@ -37,35 +37,41 @@ class homebot:
         self.allowed_device_ids = set(map(int, allowed_device_ids))
         self.rejected_device_ids = set(map(int, rejected_device_ids))
         self._devices_cache = None
-        self._ordered_devices = None
+        self._devices = None
 
         logging.debug(f"Allowed device ids: {self.allowed_device_ids}")
         logging.debug(f"Rejected device ids: {self.rejected_device_ids}")
 
-    def get_devices(self):
+    def get_devices(self) -> dict:
         if self._devices_cache is None:
             logging.info("Refreshing device cache")
-            self._devices_cache = self.hubitat.list_devices()
-        return self._devices_cache
+            self._devices_cache = self.hubitat.list_devices_detailed()
 
-    def get_ordered_devices(self) -> dict:
-        # devices are returned in Id order. Make it alphabetical instead
-        if self._ordered_devices is None:
-            self._ordered_devices = {
-                device['label']: f"{device['type']},{device['id']}"
-                for device in self.get_devices()
-                if self.is_allowed_device(device)}
-        return self._ordered_devices
+        def is_allowed_device(device) -> bool:
+            id = int(device["id"])
+            name = f"{device['label']}:{id}"
+            if self.allowed_device_ids and not id in self.allowed_device_ids:
+                logging.debug(f"Removing device '{name}' because not in allowed list.")
+                return False
+            if self.rejected_device_ids and id in self.rejected_device_ids:
+                logging.debug(f"Removing device '{name}' because in rejected list.")
+                return False
+            commands = [c['command'] for c in (device['commands'] or [])]
 
-    def is_allowed_device(self, device) -> bool:
-        id = int(device["id"])
-        if self.allowed_device_ids and not id in self.allowed_device_ids:
-            logging.debug(f"Removing device {device['label']}:{id} because not in allowed list.")
-            return False
-        if self.rejected_device_ids and id in self.rejected_device_ids:
-            logging.debug(f"Removing device {device['label']}:{id} because in rejected list.")
-            return False
-        return True
+            def has_command(command: str) -> bool:
+                if command in commands:
+                    return True
+                logging.debug(f"Device '{name}' doesn't support command '{command}'.")
+                return False
+
+            return has_command("on") and has_command("off")
+
+        if self._devices is None:
+            self._devices = {
+                device['label']: device
+                for device in self._devices_cache
+                if is_allowed_device(device)}
+        return self._devices
 
     def send_text(self, update: Update, context: CallbackContext, text: str) -> None:
         if text:
@@ -80,6 +86,29 @@ class homebot:
             self.telegram.dispatcher.add_handler(CommandHandler(str, fn, Filters.user(self.telegram.allowed_users)))
         helptxt = helptxt + ": " + hlp
         self.list_commands.append(helptxt)
+
+    def get_device(self, update: Update, context: CallbackContext) -> dict:
+        device_name = ' '.join(context.args)
+        if not device_name:
+            self.send_text(update, context, "Device name not specified.")
+            return None
+
+        device = self.get_devices().get(device_name, None)
+        if device is None:
+            self.send_text(update, context, "Device not found. '/l' to get list of devices.")
+
+        return device
+
+    def device_actuator(self, update: Update, context: CallbackContext, command: str) -> None:
+        device = self.get_device(update, context)
+        if not device is None:
+            self.hubitat.send_command(device["id"], command)
+            self.send_text(update, context, "Done")
+
+    def command_device_info(self, update: Update, context: CallbackContext) -> None:
+        device = self.get_device(update, context)
+        if not device is None:
+            self.send_text(update, context, device)
 
     def command_start(self, update: Update, context: CallbackContext) -> None:
         # TODO: make it a real command
@@ -101,8 +130,8 @@ class homebot:
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
         devices_text = list()
         devices_text.append("Available devices:")
-        for name, info in self.get_ordered_devices().items():
-            devices_text.append(f"{name}: {info}")
+        for name, info in self.get_devices().items():
+            devices_text.append(f"{name}: {info['type']},{info['id']}")
 
         self.send_text(update, context, "\n".join(devices_text))
 
@@ -113,10 +142,10 @@ class homebot:
         self.send_text(update, context, self.telegram.rejected_message)
 
     def command_turn_on(self, update: Update, context: CallbackContext) -> None:
-        self.send_text(update, context, "TODO")
+        self.device_actuator(update, context, "on")
 
     def command_turn_off(self, update: Update, context: CallbackContext) -> None:
-        self.send_text(update, context, "TODO")
+        self.device_actuator(update, context, "off")
 
     def configure(self) -> None:
         dispatcher = self.telegram.dispatcher
@@ -127,6 +156,7 @@ class homebot:
         self.add_command(['start', 's'], 'something', self.command_start)
         self.add_command(['caps', 'c'], 'caps mode', self.command_caps)
         self.add_command(['help', 'h'], 'display help', self.command_help)  # sadly '/?' is not a valid command
+        self.add_command(['info', 'i'], 'get device info', self.command_device_info)
         self.add_command(['list', 'l'], 'get devices', self.command_list_devices)
         self.add_command(['on'], 'turn on device', self.command_turn_on)
         self.add_command(['off'], 'turn off device', self.command_turn_off)
