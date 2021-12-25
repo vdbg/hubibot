@@ -1,6 +1,7 @@
 telegram:
-  token: 'enter your telegram token here' # Search for Botfather in your favorite search engine
-  allowed_users_ids: [ 123, 456 ]         # Ask userinfobot bot to get the id. Can't be usernames because neither immutable nor unique
+  token: 'enter your telegram token here'  # Search for Botfather in your favorite search engine
+  allowed_users_ids: [ 123, 456 ]          # Ask userinfobot bot to get the id. Can't be usernames because neither immutable nor unique
+  rejected_message: "Unauthorized user :p" # Message to return to non-allowed users. Empty string for silently ignoring non-allowed users
 
 hubitat:
   url: 'http://ipaddress/'               # What you type in the browser to log on to Hubitat
