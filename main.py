@@ -56,24 +56,15 @@ class homebot:
             if self.rejected_device_ids and id in self.rejected_device_ids:
                 logging.debug(f"Removing device '{name}' because in rejected list.")
                 return False
-            commands = device["commands"]
+            commands = [c['command'] for c in (device['commands'] or [])]
 
             def has_command(command: str) -> bool:
-                if commands is None:
-                    logging.debug(f"Device '{name}' doesn't support commands")
-                    return False
-
-                for c in commands:
-                    if c["command"] == command:
-                        return True
-
+                if command in commands:
+                    return True
                 logging.debug(f"Device '{name}' doesn't support command '{command}'.")
                 return False
 
-            if not has_command("on") or not has_command("off"):
-                return False
-
-            return True
+            return has_command("on") and has_command("off")
 
         if self._devices is None:
             self._devices = {
@@ -112,6 +103,7 @@ class homebot:
         device = self.get_device(update, context)
         if not device is None:
             self.hubitat.send_command(device["id"], command)
+            self.send_text(update, context, "Done")
 
     def command_device_info(self, update: Update, context: CallbackContext) -> None:
         device = self.get_device(update, context)
