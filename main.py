@@ -80,7 +80,7 @@ class Homebot:
     def __init__(self, telegram: Telegram, hubitat: Hubitat):
         self.telegram = telegram
         self.hubitat = hubitat
-        self.list_commands = list()
+        self.list_commands = []
 
     def send_text(self, update: Update, context: CallbackContext, text: str) -> None:
         if text:
@@ -105,10 +105,8 @@ class Homebot:
         device = self.hubitat.get_devices().get(device_name, None)
         if device is None:
             for alias in self.hubitat.device_aliases:
-                # There has to be a simpler way?!
-                items = list(alias.items())
-                pattern = items[0][0]
-                sub = items[0][1]
+                pattern = alias[0]
+                sub = alias[1]
                 new_device_name = re.sub(pattern, sub, device_name)
                 logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
                 device = self.hubitat.get_devices().get(new_device_name, None)

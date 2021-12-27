@@ -14,7 +14,7 @@ hubitat:
   # List of regex replacements to perform on provided device name, if not found. \\n with n a number corresponds to the n'th
   # captured string. In the example given below, if performing "/on Office" and no device called "Office" exists, the robot will
   # look for a device named "Office Light"
-  device_aliases: [ { "^(.*)$": "\\1 Light" }, { "^(.*) Closet$": "\\1 Walking Closet Light" }, { "^hw$", "Hot Water" } ]
+  device_aliases: [ [ "^(.*)$", "\\1 Light" ], [ "^(.*) Closet$", "\\1 Walking Closet Light" ], [ "^hw$", "Hot Water" ] ]
 
 main:
   logverbosity: WARNING  # possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
