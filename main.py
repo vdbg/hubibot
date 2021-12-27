@@ -6,6 +6,8 @@ from pyhubitat import MakerAPI
 import logging
 from pathlib import Path
 
+import re
+
 # https://github.com/python-telegram-bot/python-telegram-bot
 from telegram import Update
 from telegram.ext import CallbackContext
@@ -29,23 +31,23 @@ class Telegram:
         self.rejected_message = conf["rejected_message"]
 
 
-class homebot:
-    def __init__(self, telegram: Telegram, hubitat: MakerAPI, allowed_device_ids: list, rejected_device_ids: list):
-        self.telegram = telegram
-        self.hubitat = hubitat
-        self.list_commands = list()
-        self.allowed_device_ids = set(map(int, allowed_device_ids))
-        self.rejected_device_ids = set(map(int, rejected_device_ids))
+class Hubitat:
+    def __init__(self, conf: dict):
+        hub = f"{conf['url']}apps/api/{conf['appid']}"
+        logging.info(f"Connecting to hubitat Maker API app {hub}")
+        self.api = MakerAPI(conf["token"], hub)
+        self.allowed_device_ids = set(map(int, conf["allowed_device_ids"]))
+        self.rejected_device_ids = set(map(int, conf["rejected_device_ids"]))
         self._devices_cache = None
         self._devices = None
-
         logging.debug(f"Allowed device ids: {self.allowed_device_ids}")
         logging.debug(f"Rejected device ids: {self.rejected_device_ids}")
+        self.device_aliases = conf["device_aliases"]
 
     def get_devices(self) -> dict:
         if self._devices_cache is None:
             logging.info("Refreshing device cache")
-            self._devices_cache = self.hubitat.list_devices_detailed()
+            self._devices_cache = self.api.list_devices_detailed()
 
         def is_allowed_device(device) -> bool:
             id = int(device["id"])
@@ -73,6 +75,13 @@ class homebot:
                 if is_allowed_device(device)}
         return self._devices
 
+
+class Homebot:
+    def __init__(self, telegram: Telegram, hubitat: Hubitat):
+        self.telegram = telegram
+        self.hubitat = hubitat
+        self.list_commands = list()
+
     def send_text(self, update: Update, context: CallbackContext, text: str) -> None:
         if text:
             context.bot.send_message(chat_id=update.effective_chat.id, text=text)
@@ -93,8 +102,20 @@ class homebot:
             self.send_text(update, context, "Device name not specified.")
             return None
 
-        device = self.get_devices().get(device_name, None)
+        device = self.hubitat.get_devices().get(device_name, None)
         if device is None:
+            for alias in self.hubitat.device_aliases:
+                # There has to be a simpler way?!
+                items = list(alias.items())
+                pattern = items[0][0]
+                sub = items[0][1]
+                new_device_name = re.sub(pattern, sub, device_name)
+                logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
+                device = self.hubitat.get_devices().get(new_device_name, None)
+                if not device is None:
+                    self.send_text(update, context, f"Using device {new_device_name}.")
+                    return device
+
             self.send_text(update, context, "Device not found. '/l' to get list of devices.")
 
         return device
@@ -102,7 +123,7 @@ class homebot:
     def device_actuator(self, update: Update, context: CallbackContext, command: str) -> None:
         device = self.get_device(update, context)
         if not device is None:
-            self.hubitat.send_command(device["id"], command)
+            self.hubitat.api.send_command(device["id"], command)
             self.send_text(update, context, "Done")
 
     def command_device_info(self, update: Update, context: CallbackContext) -> None:
@@ -130,7 +151,7 @@ class homebot:
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
         devices_text = list()
         devices_text.append("Available devices:")
-        for name, info in self.get_devices().items():
+        for name, info in self.hubitat.get_devices().items():
             devices_text.append(f"{name}: {info['type']},{info['id']}")
 
         self.send_text(update, context, "\n".join(devices_text))
@@ -169,12 +190,6 @@ class homebot:
         self.telegram.updater.idle()
 
 
-def get_hubitat(conf: dict):
-    hub = f"{conf['url']}apps/api/{conf['appid']}"
-    logging.info(f"Connecting to hubitat Maker API app {hub}")
-    return MakerAPI(conf["token"], hub)
-
-
 try:
     with open(Path(__file__).with_name("config.yaml")) as config_file:
         config = yaml.safe_load(config_file)
@@ -189,11 +204,10 @@ try:
             conf = config["main"]
             logging.getLogger().setLevel(logging.getLevelName(conf["logverbosity"]))
 
-        hubitat_conf = config["hubitat"]
-        hubitat = get_hubitat(hubitat_conf)
         telegram = Telegram(config["telegram"])
+        hubitat = Hubitat(config["hubitat"])
 
-        hal = homebot(telegram, hubitat, hubitat_conf["allowed_device_ids"], hubitat_conf["rejected_device_ids"])
+        hal = Homebot(telegram, hubitat)
         hal.configure()
         hal.run()
 
