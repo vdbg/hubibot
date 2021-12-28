@@ -40,6 +40,7 @@ class Hubitat:
         self.rejected_device_ids = set(map(int, conf["rejected_device_ids"]))
         self._devices_cache = None
         self._devices = None
+        self.case_insensitive = conf["case_insensitive"]
         logging.debug(f"Allowed device ids: {self.allowed_device_ids}")
         logging.debug(f"Rejected device ids: {self.rejected_device_ids}")
         self.device_aliases = conf["device_aliases"]
@@ -74,10 +75,19 @@ class Hubitat:
 
         if self._devices is None:
             self._devices = {
-                device['label']: device
+                self.case_hack(device['label']): device
                 for device in self._devices_cache
                 if is_allowed_device(device)}
         return self._devices
+
+    def case_hack(self, name: str) -> str:
+        # Gross Hack (tm) because Python doesn't support case comparers for dictionaries
+        if self.case_insensitive:
+            name = name.lower()
+        return name
+
+    def get_device(self, name: str) -> dict:
+        return self.get_devices().get(self.case_hack(name), None)
 
 
 class Homebot:
@@ -106,14 +116,14 @@ class Homebot:
             self.send_text(update, context, "Device name not specified.")
             return None
 
-        device = self.hubitat.get_devices().get(device_name, None)
+        device = self.hubitat.get_device(device_name)
         if device is None:
             for alias in self.hubitat.device_aliases:
                 pattern = alias[0]
                 sub = alias[1]
                 new_device_name = re.sub(pattern, sub, device_name)
                 logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
-                device = self.hubitat.get_devices().get(new_device_name, None)
+                device = self.hubitat.get_device(new_device_name)
                 if not device is None:
                     self.send_text(update, context, f"Using device {new_device_name}.")
                     return device
@@ -156,8 +166,8 @@ class Homebot:
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
         devices_text = list()
         devices_text.append("Available devices:")
-        for name, info in self.hubitat.get_devices().items():
-            devices_text.append(f"{name}: {info['type']},{info['id']}")
+        for name, info in sorted(self.hubitat.get_devices().items()):
+            devices_text.append(f"{info['label']}: {info['type']},{info['id']}")
 
         self.send_text(update, context, "\n".join(devices_text))
 
