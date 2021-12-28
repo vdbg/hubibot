@@ -9,11 +9,8 @@ from pathlib import Path
 import re
 
 # https://github.com/python-telegram-bot/python-telegram-bot
-from telegram import Update
-from telegram.ext import CallbackContext
-from telegram.ext import Updater
-from telegram.ext import CommandHandler
-from telegram.ext import MessageHandler, Filters
+from telegram import Update, ParseMode
+from telegram.ext import CallbackContext, CommandHandler, MessageHandler, Filters, Updater
 
 import yaml
 
@@ -100,6 +97,12 @@ class Homebot:
         if text:
             context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
+    def send_md(self, update: Update, context: CallbackContext, text: str = None, list: list = None) -> None:
+        if text:
+            context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=ParseMode.MARKDOWN)
+        if list:
+            context.bot.send_message(chat_id=update.effective_chat.id, text="\n".join(list), parse_mode=ParseMode.MARKDOWN)
+
     def add_command(self, cmd: list, hlp: str, fn) -> None:
         helptxt = ""
         for str in cmd:
@@ -125,7 +128,7 @@ class Homebot:
                 logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
                 device = self.hubitat.get_device(new_device_name)
                 if not device is None:
-                    self.send_text(update, context, f"Using device {new_device_name}.")
+                    self.send_text(update, context, f"Using device {device['label']}.")
                     return device
 
             self.send_text(update, context, "Device not found. '/l' to get list of devices.")
@@ -144,7 +147,11 @@ class Homebot:
     def command_device_info(self, update: Update, context: CallbackContext) -> None:
         device = self.get_device(update, context)
         if not device is None:
-            self.send_text(update, context, device)
+            info = self.hubitat.api.get_device_info(device['id'])
+            text = []
+            for k, v in info.items():
+                text.append(f"*{k}*: `{v}`")
+            self.send_md(update, context, list=text)
 
     def command_refresh(self, update: Update, context: CallbackContext) -> None:
         self.hubitat.refresh_devices()
@@ -154,22 +161,26 @@ class Homebot:
         # TODO: make it a real command
         self.send_text(update, context, update.message.text)
 
-    def command_caps(self, update: Update, context: CallbackContext) -> None:
-        # TODO: make it a real command
-        text_caps = ' '.join(context.args).upper()
-        self.send_text(update, context, text_caps)
+    def command_device_status(self, update: Update, context: CallbackContext) -> None:
+        device = self.get_device(update, context)
+        if not device is None:
+            status = self.hubitat.api.device_status(device['id'])
+            text = []
+            for k, v in status.items():
+                text.append(f"*{k}*: `{v['currentValue']}` ({v['dataType']})")
+            self.send_md(update, context, list=text)
 
     def command_unknown(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "Unknown command.")
         self.command_help(update, context)
 
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
-        devices_text = list()
+        devices_text = []
         devices_text.append("Available devices:")
         for name, info in sorted(self.hubitat.get_devices().items()):
-            devices_text.append(f"{info['label']}: {info['type']},{info['id']}")
+            devices_text.append(f"*{info['label']}*: `{info['id']}` ({info['type']})")
 
-        self.send_text(update, context, "\n".join(devices_text))
+        self.send_md(update, context, list=devices_text)
 
     def command_help(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "Available commands:\n" + "\n".join(self.list_commands))
@@ -189,13 +200,13 @@ class Homebot:
         # Reject anyone we don't know
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.allowed_users), self.command_unknown_user))
 
-        self.add_command(['refresh', 'r'], 'refresh list of devices', self.command_refresh)
-        self.add_command(['caps', 'c'], 'caps mode', self.command_caps)
         self.add_command(['help', 'h'], 'display help', self.command_help)  # sadly '/?' is not a valid command
         self.add_command(['info', 'i'], 'get device info', self.command_device_info)
         self.add_command(['list', 'l'], 'get devices', self.command_list_devices)
         self.add_command(['on'], 'turn on device', self.command_turn_on)
         self.add_command(['off'], 'turn off device', self.command_turn_off)
+        self.add_command(['refresh', 'r'], 'refresh list of devices', self.command_refresh)
+        self.add_command(['status', 's'], 'get device status', self.command_device_status)
 
         dispatcher.add_handler(MessageHandler(Filters.command, self.command_unknown))
         dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_echo))
