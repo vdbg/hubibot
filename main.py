@@ -45,6 +45,10 @@ class Hubitat:
         logging.debug(f"Rejected device ids: {self.rejected_device_ids}")
         self.device_aliases = conf["device_aliases"]
 
+    def refresh_devices(self) -> None:
+        self._devices = None
+        self._devices_cache = None
+
     def get_devices(self) -> dict:
         if self._devices_cache is None:
             logging.info("Refreshing device cache")
@@ -128,20 +132,23 @@ class Homebot:
 
         return device
 
+    def send_text_done(self, update: Update, context: CallbackContext) -> None:
+        self.send_text(update, context, "Done.")
+
     def device_actuator(self, update: Update, context: CallbackContext, command: str) -> None:
         device = self.get_device(update, context)
         if not device is None:
             self.hubitat.api.send_command(device["id"], command)
-            self.send_text(update, context, "Done")
+            self.send_text_done(update, context)
 
     def command_device_info(self, update: Update, context: CallbackContext) -> None:
         device = self.get_device(update, context)
         if not device is None:
             self.send_text(update, context, device)
 
-    def command_start(self, update: Update, context: CallbackContext) -> None:
-        # TODO: make it a real command
-        self.send_text(update, context, "I'm a bot, please talk to me!")
+    def command_refresh(self, update: Update, context: CallbackContext) -> None:
+        self.hubitat.refresh_devices()
+        self.send_text_done(update, context)
 
     def command_echo(self, update: Update, context: CallbackContext) -> None:
         # TODO: make it a real command
@@ -182,7 +189,7 @@ class Homebot:
         # Reject anyone we don't know
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.allowed_users), self.command_unknown_user))
 
-        self.add_command(['start', 's'], 'something', self.command_start)
+        self.add_command(['refresh', 'r'], 'refresh list of devices', self.command_refresh)
         self.add_command(['caps', 'c'], 'caps mode', self.command_caps)
         self.add_command(['help', 'h'], 'display help', self.command_help)  # sadly '/?' is not a valid command
         self.add_command(['info', 'i'], 'get device info', self.command_device_info)
