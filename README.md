@@ -38,6 +38,7 @@ From your Telegram account, write `/h` to the bot to get started.
 
 * Set `logverbosity` to `VERBOSE` in `config.yaml` to get more details
 * Ensure the device running the Python script can access the Hubitat's Maker API by trying the `<hubitat.url>/apps/api/<hubitat.appid>/devices?access_token=<hubitat.token>` url from that device (replace placeholders with values from config.yaml)
-* If a given device doesn't show up when issuing the `/l` command:
+* If a given device doesn't show up when issuing the `/list` command:
   1. Check that it is included in the list of devices exposed through Hubitat's MakerAPI
   2. Check that the `hubitat.allowed_device_ids` setting in `config.yaml` is either empty or includes the device's id
+  3. If the device was added to MakerAPI after starting the bot, issue the `/refresh` command
