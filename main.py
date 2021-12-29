@@ -97,11 +97,13 @@ class Homebot:
         if text:
             context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
-    def send_md(self, update: Update, context: CallbackContext, text: str = None, list: list = None) -> None:
-        if text:
+    def send_md(self, update: Update, context: CallbackContext, text) -> None:
+        if not text:
+            return
+        if isinstance(text, list):
+            context.bot.send_message(chat_id=update.effective_chat.id, text="\n".join(text), parse_mode=ParseMode.MARKDOWN)
+        else:
             context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=ParseMode.MARKDOWN)
-        if list:
-            context.bot.send_message(chat_id=update.effective_chat.id, text="\n".join(list), parse_mode=ParseMode.MARKDOWN)
 
     def add_command(self, cmd: list, hlp: str, fn) -> None:
         helptxt = ""
@@ -148,10 +150,7 @@ class Homebot:
         device = self.get_device(update, context)
         if not device is None:
             info = self.hubitat.api.get_device_info(device['id'])
-            text = []
-            for k, v in info.items():
-                text.append(f"*{k}*: `{v}`")
-            self.send_md(update, context, list=text)
+            self.send_md(update, context, [f"*{k}*: `{v}`" for k, v in info.items()])
 
     def command_refresh(self, update: Update, context: CallbackContext) -> None:
         self.hubitat.refresh_devices()
@@ -165,22 +164,19 @@ class Homebot:
         device = self.get_device(update, context)
         if not device is None:
             status = self.hubitat.api.device_status(device['id'])
-            text = []
-            for k, v in status.items():
-                text.append(f"*{k}*: `{v['currentValue']}` ({v['dataType']})")
-            self.send_md(update, context, list=text)
+            self.send_md(update, context, [f"*{k}*: `{v['currentValue']}` ({v['dataType']})" for k, v in status.items()])
 
     def command_unknown(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "Unknown command.")
         self.command_help(update, context)
 
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
-        devices_text = []
-        devices_text.append("Available devices:")
-        for name, info in sorted(self.hubitat.get_devices().items()):
-            devices_text.append(f"*{info['label']}*: `{info['id']}` ({info['type']})")
-
-        self.send_md(update, context, list=devices_text)
+        devices = self.hubitat.get_devices()
+        if not devices:
+            self.send_md(update, context, "No devices.")
+        else:
+            devices_text = [f"*{info['label']}*: `{info['id']}` ({info['type']})" for name, info in sorted(devices.items())]
+            self.send_md(update, context, devices_text)
 
     def command_help(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "Available commands:\n" + "\n".join(self.list_commands))
