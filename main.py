@@ -18,38 +18,47 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 
 
+class BotUser:
+    def __init__(self, id: int, is_admin: bool, user_group: str, device_groups: list):
+        self.id = id
+        self.is_admin = is_admin
+        self.user_group = user_group
+        self.device_groups = device_groups
+        logging.debug(f"User: {id}. IsAdmin: {self.is_admin}. UserGroup: {self.user_group}.")
+
+
 class Telegram:
-    def __init__(self, conf: dict):
+    def __init__(self, conf: dict, hubitat):
+        self.hubitat = hubitat
+        self.users = dict()
+        self.rejected_message = conf["rejected_message"]
+        for group_name, group_data in conf["user_groups"].items():
+            is_admin = group_data["is_admin"]
+            device_groups = [hubitat.get_device_group(name) for name in group_data["device_groups"]]
+            for id in group_data["ids"]:
+                if id in self.users:
+                    raise Exception(f"User id {id} is referenced in both groups '{group_name}' and '{self.users[id].user_group}'.")
+                self.users[id] = BotUser(id, is_admin, group_name, device_groups)
         self.updater = Updater(token=conf["token"], use_context=True)
         self.dispatcher = self.updater.dispatcher
-        self.allowed_users = conf["allowed_users_ids"]
-        for user in self.allowed_users:
-            logging.debug(f"Allowed user: {user}")
-        self.rejected_message = conf["rejected_message"]
+
+    def get_user(self, id: int) -> BotUser:
+        return self.users[id]
 
 
-class Hubitat:
-    def __init__(self, conf: dict):
-        hub = f"{conf['url']}apps/api/{conf['appid']}"
-        logging.info(f"Connecting to hubitat Maker API app {hub}")
-        self.api = MakerAPI(conf["token"], hub)
+class DeviceGroup:
+    def __init__(self, name: str, conf: dict, hubitat):
+        self.hubitat = hubitat
+        self.name = name
         self.allowed_device_ids = set(map(int, conf["allowed_device_ids"]))
         self.rejected_device_ids = set(map(int, conf["rejected_device_ids"]))
-        self._devices_cache = None
         self._devices = None
-        self.case_insensitive = conf["case_insensitive"]
-        logging.debug(f"Allowed device ids: {self.allowed_device_ids}")
-        logging.debug(f"Rejected device ids: {self.rejected_device_ids}")
-        self.device_aliases = conf["device_aliases"]
+        logging.debug(f"DeviceGroup: {name}. AllowedDeviceIds: {self.allowed_device_ids}. RejectedDeviceIds: {self.rejected_device_ids}.")
 
     def refresh_devices(self) -> None:
         self._devices = None
-        self._devices_cache = None
 
     def get_devices(self) -> dict:
-        if self._devices_cache is None:
-            logging.info("Refreshing device cache")
-            self._devices_cache = self.api.list_devices_detailed()
 
         def is_allowed_device(device) -> bool:
             id = int(device["id"])
@@ -71,15 +80,16 @@ class Hubitat:
             return has_command("on") and has_command("off")
 
         if self._devices is None:
+            logging.debug(f"Refreshing device cache for device group '{self.name}'.")
             self._devices = {
                 self.case_hack(device['label']): device
-                for device in self._devices_cache
+                for device in self.hubitat.get_all_devices()
                 if is_allowed_device(device)}
         return self._devices
 
     def case_hack(self, name: str) -> str:
         # Gross Hack (tm) because Python doesn't support case comparers for dictionaries
-        if self.case_insensitive:
+        if self.hubitat.case_insensitive:
             name = name.lower()
         return name
 
@@ -87,11 +97,49 @@ class Hubitat:
         return self.get_devices().get(self.case_hack(name), None)
 
 
+class Hubitat:
+    def __init__(self, conf: dict):
+        hub = f"{conf['url']}apps/api/{conf['appid']}"
+        logging.info(f"Connecting to hubitat Maker API app {hub}")
+        self.api = MakerAPI(conf["token"], hub)
+        self.device_groups = dict()
+        self._devices_cache = None
+        self.case_insensitive = conf["case_insensitive"]
+        self.device_aliases = conf["device_aliases"]
+        for name, data in conf["device_groups"].items():
+            self.device_groups[name] = DeviceGroup(name, data, self)
+        if not self.device_groups:
+            raise Exception("At least one device group must be specified in the config file.")
+
+    def refresh_devices(self) -> None:
+        self._devices_cache = None
+        for g in self.device_groups.values():
+            g.refresh_devices()
+
+    def get_device_group(self, name: str) -> DeviceGroup:
+        return self.device_groups[name]
+
+    def get_all_devices(self) -> list:
+        if self._devices_cache is None:
+            logging.info("Refreshing all devices cache")
+            self._devices_cache = self.api.list_devices_detailed()
+
+        return self._devices_cache
+
+    def get_device(self, name: str, groups: list) -> dict:
+        for group in groups:
+            ret = group.get_device(name)
+            if not ret is None:
+                return ret
+        return None
+
+
 class Homebot:
     def __init__(self, telegram: Telegram, hubitat: Hubitat):
         self.telegram = telegram
         self.hubitat = hubitat
         self.list_commands = []
+        self.list_admin_commands = []
 
     def send_text(self, update: Update, context: CallbackContext, text: str) -> None:
         if text:
@@ -105,15 +153,18 @@ class Homebot:
         else:
             context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=ParseMode.MARKDOWN)
 
-    def add_command(self, cmd: list, hlp: str, fn) -> None:
+    def add_command(self, cmd: list, hlp: str, fn, isAdmin: bool = False) -> None:
         helptxt = ""
         for str in cmd:
             if helptxt:
                 helptxt = helptxt + ", "
             helptxt = helptxt + "/" + str
-            self.telegram.dispatcher.add_handler(CommandHandler(str, fn, Filters.user(self.telegram.allowed_users)))
+            self.telegram.dispatcher.add_handler(CommandHandler(str, fn, Filters.user(self.telegram.users)))
         helptxt = helptxt + ": " + hlp
-        self.list_commands.append(helptxt)
+        if (isAdmin):
+            self.list_admin_commands.append(helptxt)
+        else:
+            self.list_commands.append(helptxt)
 
     def get_device(self, update: Update, context: CallbackContext) -> dict:
         device_name = ' '.join(context.args)
@@ -121,14 +172,15 @@ class Homebot:
             self.send_text(update, context, "Device name not specified.")
             return None
 
-        device = self.hubitat.get_device(device_name)
+        device_groups = self.get_user(update).device_groups
+        device = self.hubitat.get_device(device_name, device_groups)
         if device is None:
             for alias in self.hubitat.device_aliases:
                 pattern = alias[0]
                 sub = alias[1]
                 new_device_name = re.sub(pattern, sub, device_name)
                 logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
-                device = self.hubitat.get_device(new_device_name)
+                device = self.hubitat.get_device(new_device_name, device_groups)
                 if not device is None:
                     self.send_text(update, context, f"Using device {device['label']}.")
                     return device
@@ -136,6 +188,9 @@ class Homebot:
             self.send_text(update, context, "Device not found. '/l' to get list of devices.")
 
         return device
+
+    def get_user(self, update: Update) -> BotUser:
+        return self.telegram.get_user(update.effective_user.id)
 
     def send_text_done(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "Done.")
@@ -171,7 +226,12 @@ class Homebot:
         self.command_help(update, context)
 
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
-        devices = self.hubitat.get_devices()
+        device_groups = self.get_user(update).device_groups
+        devices = dict()
+        for device_group in device_groups:
+            for device in device_group.get_devices().values():
+                devices[device['label']] = device
+
         if not devices:
             self.send_md(update, context, "No devices.")
         else:
@@ -179,7 +239,9 @@ class Homebot:
             self.send_md(update, context, devices_text)
 
     def command_help(self, update: Update, context: CallbackContext) -> None:
-        self.send_text(update, context, "Available commands:\n" + "\n".join(self.list_commands))
+        self.send_text(update, context, "User commands:\n" + "\n".join(self.list_commands))
+        if self.get_user(update).is_admin:
+            self.send_text(update, context, "Admin commands:\n" + "\n".join(self.list_admin_commands))
 
     def command_unknown_user(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, self.telegram.rejected_message)
@@ -190,11 +252,20 @@ class Homebot:
     def command_turn_off(self, update: Update, context: CallbackContext) -> None:
         self.device_actuator(update, context, "off")
 
+    def command_users(self, update: Update, context: CallbackContext) -> None:
+        if not self.get_user(update).is_admin:
+            # non admin user attempting to use admin command, pretend it doesn't exist
+            logging.warning(f"UserId {update.effective_user.id}, handle {update.effective_user.name} is attempting admin commands.")
+            self.command_unknown(update, context)
+        else:
+            text = [f"Id: {u.id}; Admin: {u.is_admin}; UserGroup: {u.user_group}; DeviceGroups: {[group.name for group in u.device_groups]}" for u in self.telegram.users.values()]
+            self.send_md(update, context, text)
+
     def configure(self) -> None:
         dispatcher = self.telegram.dispatcher
 
         # Reject anyone we don't know
-        dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.allowed_users), self.command_unknown_user))
+        dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
         self.add_command(['help', 'h'], 'display help', self.command_help)  # sadly '/?' is not a valid command
         self.add_command(['info', 'i'], 'get device info', self.command_device_info)
@@ -203,6 +274,7 @@ class Homebot:
         self.add_command(['off'], 'turn off device', self.command_turn_off)
         self.add_command(['refresh', 'r'], 'refresh list of devices', self.command_refresh)
         self.add_command(['status', 's'], 'get device status', self.command_device_status)
+        self.add_command(['users', 'u'], 'get users', self.command_users, isAdmin=True)
 
         dispatcher.add_handler(MessageHandler(Filters.command, self.command_unknown))
         dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_echo))
@@ -226,8 +298,8 @@ try:
             conf = config["main"]
             logging.getLogger().setLevel(logging.getLevelName(conf["logverbosity"]))
 
-        telegram = Telegram(config["telegram"])
         hubitat = Hubitat(config["hubitat"])
+        telegram = Telegram(config["telegram"], hubitat)
 
         hal = Homebot(telegram, hubitat)
         hal.configure()
