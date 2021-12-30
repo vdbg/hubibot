@@ -24,7 +24,7 @@ Device groups represent collection of Hubitat devices that can be accessed by us
 
 User groups represent collection of Telegram users that have access to device groups. User groups can contain any number of Telegram user ids (those with no user ids are ignored) and reference any number of device groups. Users in a user group marked as admin can also access admin commands, such as `/users` & `refresh`.
 
-A user can only belong to one user group, but a device can belong to multiple device groups and a device group can be referenced by multiple user groups. 
+A user can only belong to one user group, but a device can belong to multiple device groups and a device group can be referenced by multiple user groups.
 
 ## Setup
 
