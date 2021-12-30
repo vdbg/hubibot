@@ -247,6 +247,7 @@ class Homebot:
             self.send_md(update, context, self.list_commands)
 
     def command_unknown_user(self, update: Update, context: CallbackContext) -> None:
+        logging.warning(f"Unknown UserId {update.effective_user.id} with handle {update.effective_user.name} is attempting to use the bot.")
         self.send_text(update, context, self.telegram.rejected_message)
 
     def command_turn_on(self, update: Update, context: CallbackContext) -> None:
