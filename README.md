@@ -22,7 +22,7 @@ While three user groups ("admins", "family", "guests") and three device groups (
 
 Device groups represent collection of Hubitat devices that can be accessed by user groups. In the template config file "admins" user group has access to "all" device group, "family" to "regular", and "guests" to "limited".
 
-User groups represent collection of Telegram users that have access to device groups. User groups can contain any number of Telegram user ids (those with no user ids are ignored) and reference any number of device groups. Users in a user group marked as admin can also access admin commands, such as `/users`. 
+User groups represent collection of Telegram users that have access to device groups. User groups can contain any number of Telegram user ids (those with no user ids are ignored) and reference any number of device groups. Users in a user group marked as admin can also access admin commands, such as `/users`.
 
 A user can only belong in one user group, but a device can belong in multiple device groups and a device group can be referenced by multiple user groups. 
 
@@ -62,7 +62,7 @@ From your Telegram account, write `/h` to the bot to get the list of available c
   4. Check the device group(s) of the given user with the `/users` command
   5. Check that the device has a label in Hubitat in addition to a name. The former is used by the bot
 
-## Telegram user Ids
+## Getting Telegram user Ids
 
 The `config.yaml` file takes user Ids instead of user handles because the later are neither immutable nor unique.
 
