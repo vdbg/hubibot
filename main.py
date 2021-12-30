@@ -138,8 +138,8 @@ class Homebot:
     def __init__(self, telegram: Telegram, hubitat: Hubitat):
         self.telegram = telegram
         self.hubitat = hubitat
-        self.list_commands = []
-        self.list_admin_commands = []
+        self.list_commands = ["*User commands*:"]
+        self.list_admin_commands = ["*Admin commands*:"]
 
     def send_text(self, update: Update, context: CallbackContext, text: str) -> None:
         if text:
@@ -153,13 +153,15 @@ class Homebot:
         else:
             context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=ParseMode.MARKDOWN)
 
-    def add_command(self, cmd: list, hlp: str, fn, isAdmin: bool = False) -> None:
+    def add_command(self, cmd: list, hlp: str, fn, isAdmin: bool = False, params: str = None) -> None:
         helptxt = ""
         for str in cmd:
             if helptxt:
                 helptxt = helptxt + ", "
             helptxt = helptxt + "/" + str
             self.telegram.dispatcher.add_handler(CommandHandler(str, fn, Filters.user(self.telegram.users)))
+        if params:
+            helptxt = helptxt + " `"+params+"`"
         helptxt = helptxt + ": " + hlp
         if (isAdmin):
             self.list_admin_commands.append(helptxt)
@@ -239,9 +241,10 @@ class Homebot:
             self.send_md(update, context, devices_text)
 
     def command_help(self, update: Update, context: CallbackContext) -> None:
-        self.send_text(update, context, "User commands:\n" + "\n".join(self.list_commands))
         if self.get_user(update).is_admin:
-            self.send_text(update, context, "Admin commands:\n" + "\n".join(self.list_admin_commands))
+            self.send_md(update, context, self.list_admin_commands)
+        else:
+            self.send_md(update, context, self.list_commands)
 
     def command_unknown_user(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, self.telegram.rejected_message)
@@ -268,13 +271,15 @@ class Homebot:
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
         self.add_command(['help', 'h'], 'display help', self.command_help)  # sadly '/?' is not a valid command
-        self.add_command(['info', 'i'], 'get device info', self.command_device_info)
-        self.add_command(['list', 'l'], 'get devices', self.command_list_devices)
-        self.add_command(['on'], 'turn on device', self.command_turn_on)
-        self.add_command(['off'], 'turn off device', self.command_turn_off)
+        self.add_command(['info', 'i'], 'get info of device `<name>`', self.command_device_info, params="<name>")
+        self.add_command(['list', 'l'], 'list all devices', self.command_list_devices)
+        self.add_command(['on'], 'turn on device `<name>`', self.command_turn_on, params="<name>")
+        self.add_command(['off'], 'turn off device `<name>`', self.command_turn_off, params="<name>")
         self.add_command(['refresh', 'r'], 'refresh list of devices', self.command_refresh)
-        self.add_command(['status', 's'], 'get device status', self.command_device_status)
+        self.add_command(['status', 's'], 'get status of device `<name>`', self.command_device_status, params="<name>")
         self.add_command(['users', 'u'], 'get users', self.command_users, isAdmin=True)
+
+        self.list_admin_commands += self.list_commands
 
         dispatcher.add_handler(MessageHandler(Filters.command, self.command_unknown))
         dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_echo))
