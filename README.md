@@ -22,9 +22,9 @@ While three user groups ("admins", "family", "guests") and three device groups (
 
 Device groups represent collection of Hubitat devices that can be accessed by user groups. In the template config file "admins" user group has access to "all" device group, "family" to "regular", and "guests" to "limited".
 
-User groups represent collection of Telegram users that have access to device groups. User groups can contain any number of Telegram user ids (those with no user ids are ignored) and reference any number of device groups. Users in a user group marked as admin can also access admin commands, such as `/users`.
+User groups represent collection of Telegram users that have access to device groups. User groups can contain any number of Telegram user ids (those with no user ids are ignored) and reference any number of device groups. Users in a user group marked as admin can also access admin commands, such as `/users` & `refresh`.
 
-A user can only belong in one user group, but a device can belong in multiple device groups and a device group can be referenced by multiple user groups. 
+A user can only belong to one user group, but a device can belong to multiple device groups and a device group can be referenced by multiple user groups. 
 
 ## Setup
 
@@ -52,7 +52,7 @@ From your Telegram account, write `/h` to the bot to get the list of available c
 
 ## Troubleshooting
 
-* Set `main:logverbosity` to `DEBUG` in `config.yaml` to get more details. Note: this will print **Hubitat's token in plain text**
+* Set `main:logverbosity` to `DEBUG` in `config.yaml` to get more details. Note: **Hubitat's token is printed in plain text** when `main:logverbosity` is `DEBUG`
 * Ensure the bot was restarted after making changes to `config.yaml`
 * Ensure the device running the Python script can access the Hubitat's Maker API by trying to access the `<hubitat:url>/apps/api/<hubitat:appid>/devices?access_token=<hubitat:token>` url from that device (replace placeholders with values from config.yaml)
 * If a given device doesn't show up when issuing the `/list` command:
