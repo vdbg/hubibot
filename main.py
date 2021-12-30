@@ -184,24 +184,19 @@ class Homebot:
                 logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
                 device = self.hubitat.get_device(new_device_name, device_groups)
                 if not device is None:
-                    self.send_text(update, context, f"Using device {device['label']}.")
                     return device
 
-            self.send_text(update, context, "Device not found. '/l' to get list of devices.")
-
-        return device
+        self.send_text(update, context, "Device not found. '/l' to get list of devices.")
+        return None
 
     def get_user(self, update: Update) -> BotUser:
         return self.telegram.get_user(update.effective_user.id)
 
-    def send_text_done(self, update: Update, context: CallbackContext) -> None:
-        self.send_text(update, context, "Done.")
-
-    def device_actuator(self, update: Update, context: CallbackContext, command: str) -> None:
+    def device_actuator(self, update: Update, context: CallbackContext, command: str, message: str) -> None:
         device = self.get_device(update, context)
         if not device is None:
             self.hubitat.api.send_command(device["id"], command)
-            self.send_text_done(update, context)
+            self.send_text(update, context, message.format(device['label']))
 
     def command_device_info(self, update: Update, context: CallbackContext) -> None:
         device = self.get_device(update, context)
@@ -211,7 +206,7 @@ class Homebot:
 
     def command_refresh(self, update: Update, context: CallbackContext) -> None:
         self.hubitat.refresh_devices()
-        self.send_text_done(update, context)
+        self.send_text(update, context, "Refresh completed.")
 
     def command_echo(self, update: Update, context: CallbackContext) -> None:
         # TODO: make it a real command
@@ -221,7 +216,9 @@ class Homebot:
         device = self.get_device(update, context)
         if not device is None:
             status = self.hubitat.api.device_status(device['id'])
-            self.send_md(update, context, [f"*{k}*: `{v['currentValue']}` ({v['dataType']})" for k, v in status.items()])
+            text = [f"Status for device *{device['label']}*:"]
+            text += [f"*{k}*: `{v['currentValue']}` ({v['dataType']})" for k, v in status.items()]
+            self.send_md(update, context, text)
 
     def command_unknown(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "Unknown command.")
@@ -251,10 +248,10 @@ class Homebot:
         self.send_text(update, context, self.telegram.rejected_message)
 
     def command_turn_on(self, update: Update, context: CallbackContext) -> None:
-        self.device_actuator(update, context, "on")
+        self.device_actuator(update, context, "on", "Turned on {}.")
 
     def command_turn_off(self, update: Update, context: CallbackContext) -> None:
-        self.device_actuator(update, context, "off")
+        self.device_actuator(update, context, "off", "Turned off {}.")
 
     def command_users(self, update: Update, context: CallbackContext) -> None:
         if not self.get_user(update).is_admin:
