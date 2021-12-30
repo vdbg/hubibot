@@ -14,7 +14,7 @@ This script enables a [Telegram](https://telegram.org/) bot to handle commands a
 
 ## Understanding user and device groups
 
-While three user groups ("admins", "family", "guests") and three device groups ("all","regular","limited") are provided in the template config file as examples, any positive number of user and device groups are supported (names are free-form, alphabetical). For example, a single user could only keep "admins" & "all".
+While three user groups ("admins", "family", "guests") and three device groups ("all","regular","limited") are provided in the template config file as examples, any positive number of user and device groups are supported (names are free-form, alphabetical). For example, if only one single user is using the bot, only keeping "admins" user group & "all" device group will suffice.
 
 Device groups represent collection of Hubitat devices that can be accessed by user groups. In the template config file "admins" user group has access to "all" device group, "family" to "regular", and "guests" to "limited".
 

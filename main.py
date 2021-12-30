@@ -30,7 +30,7 @@ class BotUser:
 class Telegram:
     def __init__(self, conf: dict, hubitat):
         self.hubitat = hubitat
-        self.users = dict()
+        self.users = {}
         self.rejected_message = conf["rejected_message"]
         for group_name, group_data in conf["user_groups"].items():
             is_admin = group_data["is_admin"]
@@ -129,7 +129,7 @@ class Hubitat:
     def get_device(self, name: str, groups: list) -> dict:
         for group in groups:
             ret = group.get_device(name)
-            if not ret is None:
+            if ret:
                 return ret
         return None
 
