@@ -1,5 +1,5 @@
 
-# HomeBot: Telegram robot for Hubitat
+# HubiBot: Telegram robot for Hubitat
 
 This program allows a [Telegram](https://telegram.org/) user to issue commands against devices managed by [Hubitat](https://hubitat.com/) through a Telegram bot.
 
