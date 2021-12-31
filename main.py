@@ -33,11 +33,11 @@ class Telegram:
         self.users = {}
         self.rejected_message = conf["rejected_message"]
         for group_name, group_data in conf["user_groups"].items():
-            is_admin = group_data["is_admin"]
+            is_admin = bool(group_data["is_admin"])
             device_groups = [hubitat.get_device_group(name) for name in group_data["device_groups"]]
-            for id in group_data["ids"]:
+            for id in map(int, group_data["ids"]):
                 if id in self.users:
-                    raise Exception(f"User id {id} is referenced in both groups '{group_name}' and '{self.users[id].user_group}'.")
+                    raise ValueError(f"User id {id} is referenced in both groups '{group_name}' and '{self.users[id].user_group}'.")
                 self.users[id] = BotUser(id, is_admin, group_name, device_groups)
         self.updater = Updater(token=conf["token"], use_context=True)
         self.dispatcher = self.updater.dispatcher
@@ -104,7 +104,7 @@ class Hubitat:
         self.api = MakerAPI(conf["token"], hub)
         self.device_groups = dict()
         self._devices_cache = None
-        self.case_insensitive = conf["case_insensitive"]
+        self.case_insensitive = bool(conf["case_insensitive"])
         self.device_aliases = conf["device_aliases"]
         for name, data in conf["device_groups"].items():
             self.device_groups[name] = DeviceGroup(name, data, self)
@@ -142,16 +142,18 @@ class Homebot:
         self.list_admin_commands = ["*Admin commands*:"]
 
     def send_text(self, update: Update, context: CallbackContext, text: str) -> None:
-        if text:
-            context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+        self.send_text_or_list(update, context, text)
 
     def send_md(self, update: Update, context: CallbackContext, text) -> None:
+        self.send_text_or_list(update, context, text, ParseMode.MARKDOWN)
+
+    def send_text_or_list(self, update: Update, context: CallbackContext, text, parse_mode: ParseMode = None) -> None:
         if not text:
             return
         if isinstance(text, list):
-            context.bot.send_message(chat_id=update.effective_chat.id, text="\n".join(text), parse_mode=ParseMode.MARKDOWN)
+            context.bot.send_message(chat_id=update.effective_chat.id, text="\n".join(text), parse_mode=parse_mode)
         else:
-            context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=ParseMode.MARKDOWN)
+            context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=parse_mode)
 
     def add_command(self, cmd: list, hlp: str, fn, isAdmin: bool = False, params: str = None) -> None:
         helptxt = ""
@@ -176,15 +178,17 @@ class Homebot:
 
         device_groups = self.get_user(update).device_groups
         device = self.hubitat.get_device(device_name, device_groups)
-        if device is None:
-            for alias in self.hubitat.device_aliases:
-                pattern = alias[0]
-                sub = alias[1]
-                new_device_name = re.sub(pattern, sub, device_name)
-                logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
-                device = self.hubitat.get_device(new_device_name, device_groups)
-                if device:
-                    return device
+        if device:
+            return device
+
+        for alias in self.hubitat.device_aliases:
+            pattern = alias[0]
+            sub = alias[1]
+            new_device_name = re.sub(pattern, sub, device_name)
+            logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
+            device = self.hubitat.get_device(new_device_name, device_groups)
+            if device:
+                return device
 
         self.send_text(update, context, "Device not found. '/l' to get list of devices.")
         return None
@@ -192,15 +196,25 @@ class Homebot:
     def get_user(self, update: Update) -> BotUser:
         return self.telegram.get_user(update.effective_user.id)
 
+    def is_admin(self, update: Update, context: CallbackContext = None, log_warning: bool = False) -> bool:
+        ret = self.get_user(update).is_admin
+        if not ret and log_warning:
+            # non admin user attempting to use admin command, pretend it doesn't exist
+            logging.warning(f"UserId {update.effective_user.id}, handle {update.effective_user.name} is attempting admin commands.")
+            self.command_unknown(update, context)
+        return ret
+
     def device_actuator(self, update: Update, context: CallbackContext, command: str, message: str) -> None:
         device = self.get_device(update, context)
-        if not device is None:
+        if device:
             self.hubitat.api.send_command(device["id"], command)
             self.send_text(update, context, message.format(device['label']))
 
     def command_device_info(self, update: Update, context: CallbackContext) -> None:
+        if not self.is_admin(update, context=context, log_warning=True):
+            return
         device = self.get_device(update, context)
-        if not device is None:
+        if device:
             info = self.hubitat.api.get_device_info(device['id'])
             self.send_md(update, context, [f"*{k}*: `{v}`" for k, v in info.items()])
 
@@ -208,13 +222,13 @@ class Homebot:
         self.hubitat.refresh_devices()
         self.send_text(update, context, "Refresh completed.")
 
-    def command_echo(self, update: Update, context: CallbackContext) -> None:
-        # TODO: make it a real command
-        self.send_text(update, context, update.message.text)
+    def command_text(self, update: Update, context: CallbackContext) -> None:
+        # TODO: make it more interesting by consuming update.message.text
+        self.command_help(update, context)
 
     def command_device_status(self, update: Update, context: CallbackContext) -> None:
         device = self.get_device(update, context)
-        if not device is None:
+        if device:
             status = self.hubitat.api.device_status(device['id'])
             text = [f"Status for device *{device['label']}*:"]
             text += [f"*{k}*: `{v['currentValue']}` ({v['dataType']})" for k, v in status.items()]
@@ -234,11 +248,14 @@ class Homebot:
         if not devices:
             self.send_md(update, context, "No devices.")
         else:
-            devices_text = [f"*{info['label']}*: `{info['id']}` ({info['type']})" for name, info in sorted(devices.items())]
-            self.send_md(update, context, devices_text)
+            if self.is_admin(update):
+                devices_text = [f"*{info['label']}*: `{info['id']}` ({info['type']})" for name, info in sorted(devices.items())]
+                self.send_md(update, context, devices_text)
+            else:
+                self.send_text(update, context, [info['label'] for name, info in sorted(devices.items())])
 
     def command_help(self, update: Update, context: CallbackContext) -> None:
-        if self.get_user(update).is_admin:
+        if self.is_admin(update):
             self.send_md(update, context, self.list_admin_commands)
         else:
             self.send_md(update, context, self.list_commands)
@@ -254,11 +271,7 @@ class Homebot:
         self.device_actuator(update, context, "off", "Turned off {}.")
 
     def command_users(self, update: Update, context: CallbackContext) -> None:
-        if not self.get_user(update).is_admin:
-            # non admin user attempting to use admin command, pretend it doesn't exist
-            logging.warning(f"UserId {update.effective_user.id}, handle {update.effective_user.name} is attempting admin commands.")
-            self.command_unknown(update, context)
-        else:
+        if self.is_admin(update, context=context, log_warning=True):
             text = [f"Id: {u.id}; Admin: {u.is_admin}; UserGroup: {u.user_group}; DeviceGroups: {[group.name for group in u.device_groups]}" for u in self.telegram.users.values()]
             self.send_md(update, context, text)
 
@@ -269,7 +282,7 @@ class Homebot:
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
         self.add_command(['help', 'h'], 'display help', self.command_help)  # sadly '/?' is not a valid command
-        self.add_command(['info', 'i'], 'get info of device `<name>`', self.command_device_info, params="<name>")
+        self.add_command(['info', 'i'], 'get info of device `<name>`', self.command_device_info, params="<name>", isAdmin=True)
         self.add_command(['list', 'l'], 'list all devices', self.command_list_devices)
         self.add_command(['on'], 'turn on device `<name>`', self.command_turn_on, params="<name>")
         self.add_command(['off'], 'turn off device `<name>`', self.command_turn_off, params="<name>")
@@ -280,7 +293,7 @@ class Homebot:
         self.list_admin_commands += self.list_commands
 
         dispatcher.add_handler(MessageHandler(Filters.command, self.command_unknown))
-        dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_echo))
+        dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_text))
 
     def run(self) -> None:
         self.telegram.updater.start_polling()
