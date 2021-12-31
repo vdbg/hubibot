@@ -33,11 +33,11 @@ class Telegram:
         self.users = {}
         self.rejected_message = conf["rejected_message"]
         for group_name, group_data in conf["user_groups"].items():
-            is_admin = group_data["is_admin"]
+            is_admin = bool(group_data["is_admin"])
             device_groups = [hubitat.get_device_group(name) for name in group_data["device_groups"]]
-            for id in group_data["ids"]:
+            for id in map(int, group_data["ids"]):
                 if id in self.users:
-                    raise Exception(f"User id {id} is referenced in both groups '{group_name}' and '{self.users[id].user_group}'.")
+                    raise ValueError(f"User id {id} is referenced in both groups '{group_name}' and '{self.users[id].user_group}'.")
                 self.users[id] = BotUser(id, is_admin, group_name, device_groups)
         self.updater = Updater(token=conf["token"], use_context=True)
         self.dispatcher = self.updater.dispatcher
@@ -104,7 +104,7 @@ class Hubitat:
         self.api = MakerAPI(conf["token"], hub)
         self.device_groups = dict()
         self._devices_cache = None
-        self.case_insensitive = conf["case_insensitive"]
+        self.case_insensitive = bool(conf["case_insensitive"])
         self.device_aliases = conf["device_aliases"]
         for name, data in conf["device_groups"].items():
             self.device_groups[name] = DeviceGroup(name, data, self)
@@ -176,15 +176,17 @@ class Homebot:
 
         device_groups = self.get_user(update).device_groups
         device = self.hubitat.get_device(device_name, device_groups)
-        if device is None:
-            for alias in self.hubitat.device_aliases:
-                pattern = alias[0]
-                sub = alias[1]
-                new_device_name = re.sub(pattern, sub, device_name)
-                logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
-                device = self.hubitat.get_device(new_device_name, device_groups)
-                if device:
-                    return device
+        if device:
+            return device
+
+        for alias in self.hubitat.device_aliases:
+            pattern = alias[0]
+            sub = alias[1]
+            new_device_name = re.sub(pattern, sub, device_name)
+            logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
+            device = self.hubitat.get_device(new_device_name, device_groups)
+            if device:
+                return device
 
         self.send_text(update, context, "Device not found. '/l' to get list of devices.")
         return None
@@ -194,13 +196,13 @@ class Homebot:
 
     def device_actuator(self, update: Update, context: CallbackContext, command: str, message: str) -> None:
         device = self.get_device(update, context)
-        if not device is None:
+        if device:
             self.hubitat.api.send_command(device["id"], command)
             self.send_text(update, context, message.format(device['label']))
 
     def command_device_info(self, update: Update, context: CallbackContext) -> None:
         device = self.get_device(update, context)
-        if not device is None:
+        if device:
             info = self.hubitat.api.get_device_info(device['id'])
             self.send_md(update, context, [f"*{k}*: `{v}`" for k, v in info.items()])
 
@@ -208,13 +210,13 @@ class Homebot:
         self.hubitat.refresh_devices()
         self.send_text(update, context, "Refresh completed.")
 
-    def command_echo(self, update: Update, context: CallbackContext) -> None:
-        # TODO: make it a real command
-        self.send_text(update, context, update.message.text)
+    def command_text(self, update: Update, context: CallbackContext) -> None:
+        # TODO: make it more interesting by consuming update.message.text
+        self.command_help(update, context)
 
     def command_device_status(self, update: Update, context: CallbackContext) -> None:
         device = self.get_device(update, context)
-        if not device is None:
+        if device:
             status = self.hubitat.api.device_status(device['id'])
             text = [f"Status for device *{device['label']}*:"]
             text += [f"*{k}*: `{v['currentValue']}` ({v['dataType']})" for k, v in status.items()]
@@ -280,7 +282,7 @@ class Homebot:
         self.list_admin_commands += self.list_commands
 
         dispatcher.add_handler(MessageHandler(Filters.command, self.command_unknown))
-        dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_echo))
+        dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_text))
 
     def run(self) -> None:
         self.telegram.updater.start_polling()
