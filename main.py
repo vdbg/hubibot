@@ -183,7 +183,7 @@ class Homebot:
                 new_device_name = re.sub(pattern, sub, device_name)
                 logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
                 device = self.hubitat.get_device(new_device_name, device_groups)
-                if not device is None:
+                if device:
                     return device
 
         self.send_text(update, context, "Device not found. '/l' to get list of devices.")
