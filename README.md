@@ -5,6 +5,17 @@ This program allows a [Telegram](https://telegram.org/) user to issue commands a
 
 Notable pros compared to alternatives are fine-grained access control and not requiring a VPN.
 
+## Highlights
+
+* Can issue commands to Hubitat devices by talking to a Telegram robot, e.g., `/on Office Light` to turn on the device named "Office Light".
+* One Telegram robot can expose different sets of devices to different people, e.g., different devices available for person managing Hubitat, family members and friends.
+* Can give multiple names to devices, e.g., `/on hw` doing the same as `/on Hot Water`.
+
+## Example of interaction
+
+![d2e001b279de98f9960771b9f6e0581006afd667](https://user-images.githubusercontent.com/1063918/147838147-e93848b3-9ac0-4a6a-9072-dce10639d008.png)
+
+
 ## Pre-requisites
 
 * A [Hubitat](https://hubitat.com/) hub
