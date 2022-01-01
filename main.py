@@ -204,10 +204,14 @@ class Homebot:
             self.command_unknown(update, context)
         return ret
 
-    def device_actuator(self, update: Update, context: CallbackContext, command: str, message: str) -> None:
+    def device_actuator(self, update: Update, context: CallbackContext, command, message: str) -> None:
         device = self.get_device(update, context)
         if device:
-            self.hubitat.api.send_command(device["id"], command)
+            logging.info(f"User {update.effective_user.id} is sending command {command} to {device['label']}")
+            if isinstance(command, list):
+                self.hubitat.api.send_command(device["id"], command[0], command[1])
+            else:
+                self.hubitat.api.send_command(device["id"], command)
             self.send_text(update, context, message.format(device['label']))
 
     def command_device_info(self, update: Update, context: CallbackContext) -> None:
@@ -275,12 +279,24 @@ class Homebot:
             text = [f"Id: {u.id}; Admin: {u.is_admin}; UserGroup: {u.user_group}; DeviceGroups: {[group.name for group in u.device_groups]}" for u in self.telegram.users.values()]
             self.send_md(update, context, text)
 
+    def command_dim(self,  update: Update, context: CallbackContext) -> None:
+        if len(context.args) < 2:
+            self.send_text("Dim level and device name must be specified.")
+            return
+        percent = int(context.args[0])
+        if percent < 0 or percent > 100:
+            self.send_text("Invalid dim level specified.")
+            return
+        context.args = context.args[1:]
+        self.device_actuator(update, context, ["setLevel", percent], "Dimmed {} to "+str(percent)+"%")
+
     def configure(self) -> None:
         dispatcher = self.telegram.dispatcher
 
         # Reject anyone we don't know
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
+        self.add_command(['dim', 'd'], 'dim device <name> by <number> percent', self.command_dim, params="<number> <name>")
         self.add_command(['help', 'h'], 'display help', self.command_help)  # sadly '/?' is not a valid command
         self.add_command(['info', 'i'], 'get info of device `<name>`', self.command_device_info, params="<name>", isAdmin=True)
         self.add_command(['list', 'l'], 'list all devices', self.command_list_devices)
