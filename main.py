@@ -304,8 +304,8 @@ class Homebot:
         self.add_command(['help', 'h'], 'display help', self.command_help)  # sadly '/?' is not a valid command
         self.add_command(['info', 'i'], 'get info of device `name`', self.command_device_info, params="name", isAdmin=True)
         self.add_command(['list', 'l'], 'list all devices, or all devices containing `filter`', self.command_list_devices, params="filter")
-        self.add_command(['on'], 'turn on device `name`', self.command_turn_on, params="name")
         self.add_command(['off'], 'turn off device `name`', self.command_turn_off, params="name")
+        self.add_command(['on'], 'turn on device `name`', self.command_turn_on, params="name")
         self.add_command(['refresh', 'r'], 'refresh list of devices', self.command_refresh, isAdmin=True)
         self.add_command(['status', 's'], 'get status of device `name`', self.command_device_status, params="name")
         self.add_command(['users', 'u'], 'get users', self.command_users, isAdmin=True)
