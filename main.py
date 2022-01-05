@@ -244,10 +244,14 @@ class Homebot:
 
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
         device_groups = self.get_user(update).device_groups
+        device_filter = ' '.join(context.args).lower()
         devices = dict()
         for device_group in device_groups:
             for device in device_group.get_devices().values():
-                devices[device['label']] = device
+                name = device['label']
+                # lower(): Hack because Python doesn't support case-insensitive searches
+                if device_filter in name.lower():
+                    devices[name] = device
 
         if not devices:
             self.send_md(update, context, "No devices.")
@@ -296,14 +300,14 @@ class Homebot:
         # Reject anyone we don't know
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
-        self.add_command(['dim', 'd'], 'dim device <name> by <number> percent', self.command_dim, params="<number> <name>")
+        self.add_command(['dim', 'd'], 'dim device `name` by `number` percent', self.command_dim, params="number name")
         self.add_command(['help', 'h'], 'display help', self.command_help)  # sadly '/?' is not a valid command
-        self.add_command(['info', 'i'], 'get info of device `<name>`', self.command_device_info, params="<name>", isAdmin=True)
-        self.add_command(['list', 'l'], 'list all devices', self.command_list_devices)
-        self.add_command(['on'], 'turn on device `<name>`', self.command_turn_on, params="<name>")
-        self.add_command(['off'], 'turn off device `<name>`', self.command_turn_off, params="<name>")
+        self.add_command(['info', 'i'], 'get info of device `name`', self.command_device_info, params="name", isAdmin=True)
+        self.add_command(['list', 'l'], 'list all devices, or all devices containing `filter`', self.command_list_devices, params="filter")
+        self.add_command(['off'], 'turn off device `name`', self.command_turn_off, params="name")
+        self.add_command(['on'], 'turn on device `name`', self.command_turn_on, params="name")
         self.add_command(['refresh', 'r'], 'refresh list of devices', self.command_refresh, isAdmin=True)
-        self.add_command(['status', 's'], 'get status of device `<name>`', self.command_device_status, params="<name>")
+        self.add_command(['status', 's'], 'get status of device `name`', self.command_device_status, params="name")
         self.add_command(['users', 'u'], 'get users', self.command_users, isAdmin=True)
 
         self.list_admin_commands += self.list_commands
