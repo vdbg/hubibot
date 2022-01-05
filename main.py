@@ -250,7 +250,7 @@ class Homebot:
             for device in device_group.get_devices().values():
                 name = device['label']
                 # lower(): Hack because Python doesn't support case-insensitive searches
-                if not device_filter or device_filter in name.lower():
+                if device_filter in name.lower():
                     devices[name] = device
 
         if not devices:
