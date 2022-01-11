@@ -102,7 +102,7 @@ class Hubitat:
         hub = f"{conf['url']}apps/api/{conf['appid']}"
         logging.info(f"Connecting to hubitat Maker API app {hub}")
         self.api = MakerAPI(conf["token"], hub)
-        self.device_groups = dict()
+        self.device_groups = {}
         self._devices_cache = None
         self.case_insensitive = bool(conf["case_insensitive"])
         self.device_aliases = conf["device_aliases"]
@@ -118,6 +118,9 @@ class Hubitat:
 
     def get_device_group(self, name: str) -> DeviceGroup:
         return self.device_groups[name]
+
+    def get_device_groups(self) -> list:
+        return self.device_groups.values()
 
     def get_all_devices(self) -> list:
         if self._devices_cache is None:
@@ -242,10 +245,23 @@ class Homebot:
         self.send_text(update, context, "Unknown command.")
         self.command_help(update, context)
 
+    def list_devices(self, update: Update, context: CallbackContext, devices: dict, title: str):
+        devices_text = []
+        if title:
+            devices_text.append(title)
+        if not devices:
+            devices_text.append("No devices.")
+        else:
+            if self.is_admin(update):
+                devices_text += [f"*{info['label']}*: `{info['id']}` ({info['type']})" for name, info in sorted(devices.items())]
+            else:
+                devices_text += [info['label'] for name, info in sorted(devices.items())]
+        self.send_md(update, context, devices_text)
+
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
         device_groups = self.get_user(update).device_groups
         device_filter = ' '.join(context.args).lower()
-        devices = dict()
+        devices = {}
         for device_group in device_groups:
             for device in device_group.get_devices().values():
                 name = device['label']
@@ -253,14 +269,14 @@ class Homebot:
                 if device_filter in name.lower():
                     devices[name] = device
 
-        if not devices:
-            self.send_md(update, context, "No devices.")
-        else:
-            if self.is_admin(update):
-                devices_text = [f"*{info['label']}*: `{info['id']}` ({info['type']})" for name, info in sorted(devices.items())]
-                self.send_md(update, context, devices_text)
-            else:
-                self.send_text(update, context, [info['label'] for name, info in sorted(devices.items())])
+        self.list_devices(update, context, devices, None)
+
+    def command_list_groups(self, update: Update, context: CallbackContext) -> None:
+        group_filter = ' '.join(context.args).lower()
+        for group in self.hubitat.get_device_groups():
+            # lower(): Hack because Python doesn't support case-insensitive searches
+            if group_filter in group.name.lower():
+                self.list_devices(update, context, group.get_devices(), f"Devices in *{group.name}*:")
 
     def command_help(self, update: Update, context: CallbackContext) -> None:
         if self.is_admin(update):
@@ -278,9 +294,9 @@ class Homebot:
     def command_turn_off(self, update: Update, context: CallbackContext) -> None:
         self.device_actuator(update, context, "off", "Turned off {}.")
 
-    def command_users(self, update: Update, context: CallbackContext) -> None:
+    def command_list_users(self, update: Update, context: CallbackContext) -> None:
         if self.is_admin(update, context=context, log_warning=True):
-            text = [f"Id: {u.id}; Admin: {u.is_admin}; UserGroup: {u.user_group}; DeviceGroups: {[group.name for group in u.device_groups]}" for u in self.telegram.users.values()]
+            text = [f"Id: `{u.id}`; Admin: `{u.is_admin}`; UserGroup: `{u.user_group}`; DeviceGroups: {[group.name for group in u.device_groups]}" for u in self.telegram.users.values()]
             self.send_md(update, context, text)
 
     def command_dim(self,  update: Update, context: CallbackContext) -> None:
@@ -301,14 +317,15 @@ class Homebot:
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
         self.add_command(['dim', 'd'], 'dim device `name` by `number` percent', self.command_dim, params="number name")
+        self.add_command(['groups', 'g'], 'get device groups, optionally filtered on name contains `filter`', self.command_list_groups, params="filter", isAdmin=True)
         self.add_command(['help', 'h'], 'display help', self.command_help)  # sadly '/?' is not a valid command
         self.add_command(['info', 'i'], 'get info of device `name`', self.command_device_info, params="name", isAdmin=True)
-        self.add_command(['list', 'l'], 'list all devices, or all devices containing `filter`', self.command_list_devices, params="filter")
+        self.add_command(['list', 'l'], 'get devices, optionally filtered on name contains `filter`', self.command_list_devices, params="filter")
         self.add_command(['off'], 'turn off device `name`', self.command_turn_off, params="name")
         self.add_command(['on'], 'turn on device `name`', self.command_turn_on, params="name")
         self.add_command(['refresh', 'r'], 'refresh list of devices', self.command_refresh, isAdmin=True)
         self.add_command(['status', 's'], 'get status of device `name`', self.command_device_status, params="name")
-        self.add_command(['users', 'u'], 'get users', self.command_users, isAdmin=True)
+        self.add_command(['users', 'u'], 'get users', self.command_list_users, isAdmin=True)
 
         self.list_admin_commands += self.list_commands
 
