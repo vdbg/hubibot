@@ -272,6 +272,8 @@ class Homebot:
         self.list_devices(update, context, devices, None)
 
     def command_list_groups(self, update: Update, context: CallbackContext) -> None:
+        if not self.is_admin(update, context=context, log_warning=True):
+            return
         group_filter = ' '.join(context.args).lower()
         for group in self.hubitat.get_device_groups():
             # lower(): Hack because Python doesn't support case-insensitive searches
@@ -295,9 +297,16 @@ class Homebot:
         self.device_actuator(update, context, "off", "Turned off {}.")
 
     def command_list_users(self, update: Update, context: CallbackContext) -> None:
-        if self.is_admin(update, context=context, log_warning=True):
-            text = [f"Id: `{u.id}`; Admin: `{u.is_admin}`; UserGroup: `{u.user_group}`; DeviceGroups: {[group.name for group in u.device_groups]}" for u in self.telegram.users.values()]
-            self.send_md(update, context, text)
+        if not self.is_admin(update, context=context, log_warning=True):
+            return
+
+        def row(id, isAdmin, userGroup, deviceGroup) -> str:
+            return f"{id :10}|{isAdmin :5}|{userGroup :10}|{deviceGroup}"
+
+        text = ["```", row("Id", "Admin", "UserGroup", "DeviceGroups"), "----------|-----|----------|-----------"]
+        text += [row(u.id, str(u.is_admin), u.user_group, [group.name for group in u.device_groups]) for u in self.telegram.users.values()]
+        text.append("```")
+        self.send_md(update, context, text)
 
     def command_dim(self,  update: Update, context: CallbackContext) -> None:
         if len(context.args) < 2:
