@@ -5,15 +5,15 @@ telegram:
   user_groups:                     # See README.md for explanation on user groups
     admins:                        # There can be any number of device groups and names (e.g. admins, family, guests) are free-form
       ids: [ 0, 1, 2 ]             # See README.md for how to get a user id
-      is_admin: true               # Admin users have access to admin commands, such as '/users'
+      access_level: ADMIN          # possible values: ADMIN, HSM, DEVICE, NONE. see README.md for details
       device_groups: [ "all" ]     # device groups are defined in hubitat:device_groups below
     family:                        # The "family" and "guests" groups can be deleted or renamed if not of any use.
       ids: [ ]
-      is_admin: false
+      access_level: HSM
       device_groups: [ "regular" ]
     guests:
       ids: [ ]
-      is_admin: false
+      access_level: DEVICE
       device_groups: [ "limited" ]
 
 # Must change: url, appid, token
