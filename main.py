@@ -114,6 +114,9 @@ class Hubitat:
         self._devices_cache = None
         self.case_insensitive = bool(conf["case_insensitive"])
         self.device_aliases = conf["device_aliases"]
+        # because Python doesn't support case insensitive searches
+        # and Hubitats requires exact case, we create a dict{lowercase,requestedcase}
+        self.hsm_arm = {x.lower(): x for x in conf["hsm_arm_values"]}
         for name, data in conf["device_groups"].items():
             self.device_groups[name] = DeviceGroup(name, data, self)
         if not self.device_groups:
@@ -183,8 +186,12 @@ class Homebot:
         helptxt = helptxt + ": " + hlp
         self.list_commands[access_level].append(helptxt)
 
+    def get_single_arg(self, context: CallbackContext) -> str:
+        # lower because Python doesn't support case insensitive searches
+        return ' '.join(context.args).lower()
+
     def get_device(self, update: Update, context: CallbackContext) -> dict:
-        device_name = ' '.join(context.args)
+        device_name = self.get_single_arg(context)
         if not device_name:
             self.send_text(update, context, "Device name not specified.")
             return None
@@ -275,7 +282,7 @@ class Homebot:
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.DEVICE)
         device_groups = self.get_user(update).device_groups
-        device_filter = ' '.join(context.args).lower()
+        device_filter = self.get_single_arg(context)
         devices = {}
         for device_group in device_groups:
             for device in device_group.get_devices().values():
@@ -289,7 +296,7 @@ class Homebot:
     def command_list_groups(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.ADMIN)
 
-        group_filter = ' '.join(context.args).lower()
+        group_filter = self.get_single_arg(context)
         for group in self.hubitat.get_device_groups():
             # lower(): Hack because Python doesn't support case-insensitive searches
             if group_filter in group.name.lower():
@@ -337,7 +344,7 @@ class Homebot:
         modes = self.hubitat.api._request_sender('modes').json()
         if (len(context.args) > 0):
             # mode change requested
-            mode_requested = ' '.join(context.args).lower()
+            mode_requested = self.get_single_arg(context)
             id = 0
             for mode in modes:
                 if mode['name'].lower() == mode_requested:
@@ -347,7 +354,7 @@ class Homebot:
                 self.send_text(update, context, "Unknown mode.")
             else:
                 self.hubitat.api._request_sender(f"modes/{id}")
-                self.send_text(update, context, "Mode changed.")
+                self.send_text(update, context, "Done.")
                 return
 
         text = []
@@ -359,6 +366,20 @@ class Homebot:
 
         self.send_text(update, context, ", ".join(text))
 
+    def command_hsm(self, update: Update, context: CallbackContext) -> None:
+        self.request_access(update, context, AccessLevel.HSM)
+        if (len(context.args) > 0):
+            # mode change requested
+            hsm_requested = self.get_single_arg(context)
+            if hsm_requested in self.hubitat.hsm_arm:
+                self.hubitat.api._request_sender(f"hsm/{self.hubitat.hsm_arm[hsm_requested]}")
+                self.send_text(update, context, "Done.")
+            else:
+                self.send_text(update, context, f"Invalid arm state. Supported values: {', '.join(self.hubitat.hsm_arm.values())}.")
+        else:
+            state = self.hubitat.api._request_sender('hsm').json()
+            self.send_text(update, context, f"State: {state['hsm']}")
+
     def configure(self) -> None:
         dispatcher = self.telegram.dispatcher
 
@@ -366,10 +387,11 @@ class Homebot:
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
         self.add_command(['dim', 'd'], 'dim device `name` by `number` percent', self.command_dim, AccessLevel.DEVICE, params="number name")
-        self.add_command(['groups', 'g'], 'get device groups, optionally filtered on name contains `filter`', self.command_list_groups, AccessLevel.ADMIN, params="filter")
+        self.add_command(['groups', 'g'], 'get device groups, optionally filtering name by `filter`', self.command_list_groups, AccessLevel.ADMIN, params="filter")
         self.add_command(['help', 'h'], 'display help', self.command_help, AccessLevel.NONE)  # sadly '/?' is not a valid command
+        self.add_command(['arm', 'a'], 'get hsm arm status or arm to `value`', self.command_hsm, AccessLevel.HSM, "value")
         self.add_command(['info', 'i'], 'get info of device `name`', self.command_device_info, AccessLevel.ADMIN, params="name")
-        self.add_command(['list', 'l'], 'get devices, optionally filtered on name contains `filter`', self.command_list_devices, AccessLevel.DEVICE, params="filter")
+        self.add_command(['list', 'l'], 'get devices, optionally filtering name by `filter`', self.command_list_devices, AccessLevel.DEVICE, params="filter")
         self.add_command(['mode', 'm'], 'lists modes or set mode to `value`', self.command_mode, AccessLevel.HSM, params="value")
         self.add_command(['off'], 'turn off device `name`', self.command_turn_off, AccessLevel.DEVICE, params="name")
         self.add_command(['on'], 'turn on device `name`', self.command_turn_on, AccessLevel.DEVICE, params="name")
