@@ -348,7 +348,7 @@ class Homebot:
             for mode in modes:
                 if mode['name'].lower() == mode_requested:
                     self.hubitat.api._request_sender(f"modes/{mode['id']}")
-                    self.send_text(update, context, "Done.")
+                    self.send_text(update, context, "Mode change completed.")
                     return
             self.send_text(update, context, "Unknown mode.")
 
@@ -368,7 +368,7 @@ class Homebot:
             hsm_requested = self.get_single_arg(context)
             if hsm_requested in self.hubitat.hsm_arm:
                 self.hubitat.api._request_sender(f"hsm/{self.hubitat.hsm_arm[hsm_requested]}")
-                self.send_text(update, context, "Done.")
+                self.send_text(update, context, "Arm request sent.")
             else:
                 self.send_text(update, context, f"Invalid arm state. Supported values: {', '.join(self.hubitat.hsm_arm.values())}.")
         else:
