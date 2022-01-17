@@ -345,17 +345,12 @@ class Homebot:
         if (len(context.args) > 0):
             # mode change requested
             mode_requested = self.get_single_arg(context)
-            id = 0
             for mode in modes:
                 if mode['name'].lower() == mode_requested:
-                    id = mode['id']
-                    break
-            if id == 0:
-                self.send_text(update, context, "Unknown mode.")
-            else:
-                self.hubitat.api._request_sender(f"modes/{id}")
-                self.send_text(update, context, "Done.")
-                return
+                    self.hubitat.api._request_sender(f"modes/{mode['id']}")
+                    self.send_text(update, context, "Done.")
+                    return
+            self.send_text(update, context, "Unknown mode.")
 
         text = []
         for mode in modes:
