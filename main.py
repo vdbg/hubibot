@@ -233,7 +233,7 @@ class Homebot:
         device = self.get_device(update, context)
         if device:
             supported_commands = device['supported_commands']
-            if not bot_command in supported_commands:
+            if bot_command not in supported_commands:
                 self.send_md(update, context, f"Command {bot_command} not supported by device `{device['label']}`.")
                 return
             logging.info(f"User {update.effective_user.id} is sending command {command} to {device['label']}")
@@ -343,9 +343,7 @@ class Homebot:
             percent = int(input)
         except ValueError:
             return None
-        if percent < 0 or percent > 100:
-            return None
-        return percent
+        return percent if 100 >= percent >= 0 else None
 
     def command_dim(self,  update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.DEVICE)
