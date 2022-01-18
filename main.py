@@ -9,6 +9,7 @@ import re
 # https://github.com/python-telegram-bot/python-telegram-bot
 from telegram import Update, ParseMode
 from telegram.ext import CallbackContext, CommandHandler, MessageHandler, Filters, Updater
+from typing import Union
 import yaml
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -77,14 +78,16 @@ class DeviceGroup:
                 logging.debug(f"Removing device '{name}' because in rejected list.")
                 return False
             commands = [c['command'] for c in (device['commands'] or [])]
+            supported_commands = set()
 
-            def has_command(command: str) -> bool:
-                if command in commands:
-                    return True
-                logging.debug(f"Device '{name}' doesn't support command '{command}'.")
-                return False
+            for command in commands:
+                bot_command = self.hubitat.he_to_bot_commands.get(command, None)
+                if bot_command:
+                    supported_commands.add(bot_command)
 
-            return has_command("on") and has_command("off")
+            device['supported_commands'] = supported_commands
+
+            return len(supported_commands) > 0
 
         if self._devices is None:
             logging.debug(f"Refreshing device cache for device group '{self.name}'.")
@@ -114,6 +117,7 @@ class Hubitat:
         self._devices_cache = None
         self.case_insensitive = bool(conf["case_insensitive"])
         self.device_aliases = conf["device_aliases"]
+        self.he_to_bot_commands = {'on': '/on', 'off': '/off', 'setLevel': '/dim'}
         # because Python doesn't support case insensitive searches
         # and Hubitats requires exact case, we create a dict{lowercase,requestedcase}
         self.hsm_arm = {x.lower(): x for x in conf["hsm_arm_values"]}
@@ -140,7 +144,7 @@ class Hubitat:
 
         return self._devices_cache
 
-    def get_device(self, name: str, groups: list) -> dict:
+    def get_device(self, name: str, groups: list[str]) -> dict:
         for group in groups:
             ret = group.get_device(name)
             if ret:
@@ -160,19 +164,18 @@ class Homebot:
             AccessLevel.HSM: ["*Hubitat Safety Monitor commands*:"]
         }
 
-    def send_text(self, update: Update, context: CallbackContext, text: str) -> None:
-        self.send_text_or_list(update, context, text)
+    def send_text(self, update: Update, context: CallbackContext, text: Union[str, list[str]]) -> None:
+        self.send_text_or_list(update, context, text, None)
 
-    def send_md(self, update: Update, context: CallbackContext, text) -> None:
+    def send_md(self, update: Update, context: CallbackContext, text: Union[str, list[str]]) -> None:
         self.send_text_or_list(update, context, text, ParseMode.MARKDOWN)
 
-    def send_text_or_list(self, update: Update, context: CallbackContext, text, parse_mode: ParseMode = None) -> None:
+    def send_text_or_list(self, update: Update, context: CallbackContext, text: Union[str, list[str]], parse_mode: ParseMode) -> None:
         if not text:
             return
         if isinstance(text, list):
-            context.bot.send_message(chat_id=update.effective_chat.id, text="\n".join(text), parse_mode=parse_mode)
-        else:
-            context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=parse_mode)
+            text = "\n".join(text)
+        context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=parse_mode)
 
     def add_command(self, cmd: list, hlp: str, fn, access_level: AccessLevel, params: str = None) -> None:
         helptxt = ""
@@ -225,10 +228,14 @@ class Homebot:
             self.command_unknown(update, context)
             raise PermissionError(f"UserId {update.effective_user.id}, handle {update.effective_user.name} is attempting level {access_level} command without permission.")
 
-    def device_actuator(self, update: Update, context: CallbackContext, command, message: str) -> None:
+    def device_actuator(self, update: Update, context: CallbackContext, command: Union[str, list], bot_command: str, message: str) -> None:
         self.request_access(update, context, AccessLevel.DEVICE)
         device = self.get_device(update, context)
         if device:
+            supported_commands = device['supported_commands']
+            if bot_command not in supported_commands:
+                self.send_md(update, context, f"Command {bot_command} not supported by device `{device['label']}`.")
+                return
             logging.info(f"User {update.effective_user.id} is sending command {command} to {device['label']}")
             if isinstance(command, list):
                 self.hubitat.api.send_command(device["id"], command[0], command[1])
@@ -258,7 +265,10 @@ class Homebot:
         if device:
             status = self.hubitat.api.device_status(device['id'])
             text = [f"Status for device *{device['label']}*:"]
-            text += [f"*{k}*: `{v['currentValue']}` ({v['dataType']})" for k, v in status.items()]
+            if self.has_access(update, AccessLevel.ADMIN):
+                text += [f"*{k}*: `{v['currentValue']}` ({v['dataType']})" for k, v in status.items()]
+            else:
+                text += [f"*{k}*: `{v['currentValue']}`" for k, v in status.items()]
             self.send_md(update, context, text)
 
     def command_unknown(self, update: Update, context: CallbackContext) -> None:
@@ -311,10 +321,10 @@ class Homebot:
         self.send_text(update, context, self.telegram.rejected_message)
 
     def command_turn_on(self, update: Update, context: CallbackContext) -> None:
-        self.device_actuator(update, context, "on", "Turned on {}.")
+        self.device_actuator(update, context, "on", "/on", "Turned on {}.")
 
     def command_turn_off(self, update: Update, context: CallbackContext) -> None:
-        self.device_actuator(update, context, "off", "Turned off {}.")
+        self.device_actuator(update, context, "off", "/off", "Turned off {}.")
 
     def command_list_users(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.ADMIN)
@@ -322,22 +332,30 @@ class Homebot:
         def row(id, isAdmin, userGroup, deviceGroup) -> str:
             return f"{id :10}|{isAdmin :5}|{userGroup :10}|{deviceGroup}"
 
-        text = ["```", row("Id", "Admin", "UserGroup", "DeviceGroups"), "----------|-----|----------|-----------"]
-        text += [row(u.id, str(u.is_admin), u.user_group, [group.name for group in u.device_groups]) for u in self.telegram.users.values()]
+        text = ["```", row("Id", "Level", "UserGroup", "DeviceGroups"), "----------|-----|----------|-----------"]
+        text += [row(u.id, u.access_level, u.user_group, [group.name for group in u.device_groups]) for u in self.telegram.users.values()]
         text.append("```")
         self.send_md(update, context, text)
+
+    def get_percent(self, input: str) -> int:
+        percent = -1
+        try:
+            percent = int(input)
+        except ValueError:
+            return None
+        return percent if 100 >= percent >= 0 else None
 
     def command_dim(self,  update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.DEVICE)
         if len(context.args) < 2:
-            self.send_text("Dim level and device name must be specified.")
+            self.send_text(update, context, "Dim level and device name must be specified.")
             return
-        percent = int(context.args[0])
-        if percent < 0 or percent > 100:
-            self.send_text("Invalid dim level specified.")
+        percent = self.get_percent(context.args[0])
+        if not percent:
+            self.send_text(update, context, "Invalid dim level specified: must be an int between 0 and 100.")
             return
         context.args = context.args[1:]
-        self.device_actuator(update, context, ["setLevel", percent], "Dimmed {} to "+str(percent)+"%")
+        self.device_actuator(update, context, ["setLevel", percent], "/dim", "Dimmed {} to "+str(percent)+"%")
 
     def command_mode(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.HSM)
@@ -347,6 +365,7 @@ class Homebot:
             mode_requested = self.get_single_arg(context)
             for mode in modes:
                 if mode['name'].lower() == mode_requested:
+                    logging.info(f"User {update.effective_user.id} is setting mode to {mode['name']}")
                     self.hubitat.api._request_sender(f"modes/{mode['id']}")
                     self.send_text(update, context, "Mode change completed.")
                     return
@@ -363,11 +382,13 @@ class Homebot:
 
     def command_hsm(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.HSM)
-        if (len(context.args) > 0):
+        if len(context.args) > 0:
             # mode change requested
             hsm_requested = self.get_single_arg(context)
             if hsm_requested in self.hubitat.hsm_arm:
-                self.hubitat.api._request_sender(f"hsm/{self.hubitat.hsm_arm[hsm_requested]}")
+                hsm = self.hubitat.hsm_arm[hsm_requested]
+                logging.info(f"User {update.effective_user.id} is performing {hsm} hsm command")
+                self.hubitat.api._request_sender(f"hsm/{hsm}")
                 self.send_text(update, context, "Arm request sent.")
             else:
                 self.send_text(update, context, f"Invalid arm state. Supported values: {', '.join(self.hubitat.hsm_arm.values())}.")
@@ -375,12 +396,22 @@ class Homebot:
             state = self.hubitat.api._request_sender('hsm').json()
             self.send_text(update, context, f"State: {state['hsm']}")
 
+    def command_commands(self, update: Update, context: CallbackContext) -> None:
+        self.request_access(update, context, AccessLevel.DEVICE)
+        device = self.get_device(update, context)
+        supported_commands = device['supported_commands']
+        if supported_commands:
+            self.send_md(update, context, f"Supported commands for `{device['label']}`: {', '.join(supported_commands)}.")
+        else:
+            self.send_md(update, context, f"No supported commands for `{device['label']}`.")
+
     def configure(self) -> None:
         dispatcher = self.telegram.dispatcher
 
         # Reject anyone we don't know
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
+        self.add_command(['commands', 'c'], 'list supported commands for device `name`', self.command_commands, AccessLevel.DEVICE, params="name")
         self.add_command(['dim', 'd'], 'dim device `name` by `number` percent', self.command_dim, AccessLevel.DEVICE, params="number name")
         self.add_command(['groups', 'g'], 'get device groups, optionally filtering name by `filter`', self.command_list_groups, AccessLevel.ADMIN, params="filter")
         self.add_command(['help', 'h'], 'display help', self.command_help, AccessLevel.NONE)  # sadly '/?' is not a valid command
