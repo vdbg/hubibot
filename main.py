@@ -348,16 +348,16 @@ class Homebot:
         logging.warning(f"Unknown UserId {update.effective_user.id} with handle {update.effective_user.name} is attempting to use the bot.")
         self.send_text(update, context, self.telegram.rejected_message)
 
-    def command_turn_on(self, update: Update, context: CallbackContext) -> None:
+    def command_device_on(self, update: Update, context: CallbackContext) -> None:
         self.device_actuator(update, context, "on", "/on", "Turned on {}.")
 
-    def command_turn_off(self, update: Update, context: CallbackContext) -> None:
+    def command_device_off(self, update: Update, context: CallbackContext) -> None:
         self.device_actuator(update, context, "off", "/off", "Turned off {}.")
 
-    def command_turn_open(self, update: Update, context: CallbackContext) -> None:
+    def command_device_open(self, update: Update, context: CallbackContext) -> None:
         self.device_actuator(update, context, "open", "/open", "Opened on {}.")
 
-    def command_turn_close(self, update: Update, context: CallbackContext) -> None:
+    def command_device_close(self, update: Update, context: CallbackContext) -> None:
         self.device_actuator(update, context, "close", "/close", "Closed off {}.")
 
     def command_list_users(self, update: Update, context: CallbackContext) -> None:
@@ -379,7 +379,7 @@ class Homebot:
             return None
         return percent if 100 >= percent >= 0 else None
 
-    def command_dim(self,  update: Update, context: CallbackContext) -> None:
+    def command_device_dim(self,  update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.DEVICE)
         if len(context.args) < 2:
             self.send_text(update, context, "Dim level and device name must be specified.")
@@ -445,9 +445,9 @@ class Homebot:
         # Reject anyone we don't know
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
-        self.add_command(['close'], 'close device `name`', self.command_turn_close, AccessLevel.DEVICE, params="name")
+        self.add_command(['close'], 'close device `name`', self.command_device_close, AccessLevel.DEVICE, params="name")
         self.add_command(['commands', 'c'], 'list supported commands for device `name`', self.command_device_commands, AccessLevel.DEVICE, params="name")
-        self.add_command(['dim', 'd'], 'dim device `name` by `number` percent', self.command_dim, AccessLevel.DEVICE, params="number name")
+        self.add_command(['dim', 'd'], 'dim device `name` by `number` percent', self.command_device_dim, AccessLevel.DEVICE, params="number name")
         self.add_command(['events', 'e'], 'Get recent events for device `name`', self.command_device_events, AccessLevel.HSM, params="name")
         self.add_command(['groups', 'g'], 'get device groups, optionally filtering name by `filter`', self.command_list_groups, AccessLevel.ADMIN, params="filter")
         self.add_command(['help', 'h'], 'display help', self.command_help, AccessLevel.NONE)  # sadly '/?' is not a valid command
@@ -455,9 +455,9 @@ class Homebot:
         self.add_command(['info', 'i'], 'get info of device `name`', self.command_device_info, AccessLevel.ADMIN, params="name")
         self.add_command(['list', 'l'], 'get devices, optionally filtering name by `filter`', self.command_list_devices, AccessLevel.DEVICE, params="filter")
         self.add_command(['mode', 'm'], 'lists modes or set mode to `value`', self.command_mode, AccessLevel.HSM, params="value")
-        self.add_command(['off'], 'turn off device `name`', self.command_turn_off, AccessLevel.DEVICE, params="name")
-        self.add_command(['on'], 'turn on device `name`', self.command_turn_on, AccessLevel.DEVICE, params="name")
-        self.add_command(['open'], 'open device `name`', self.command_turn_open, AccessLevel.DEVICE, params="name")
+        self.add_command(['off'], 'turn off device `name`', self.command_device_off, AccessLevel.DEVICE, params="name")
+        self.add_command(['on'], 'turn on device `name`', self.command_device_on, AccessLevel.DEVICE, params="name")
+        self.add_command(['open'], 'open device `name`', self.command_device_open, AccessLevel.DEVICE, params="name")
         self.add_command(['refresh', 'r'], 'refresh list of devices', self.command_refresh, AccessLevel.ADMIN)
         self.add_command(['status', 's'], 'get status of device `name`', self.command_device_status, AccessLevel.DEVICE, params="name")
         self.add_command(['users', 'u'], 'get users', self.command_list_users, AccessLevel.ADMIN)
