@@ -1,5 +1,7 @@
 #!/bin/python3
 
+from __future__ import annotations  # because raspberry pi is on Python 3.7 and annotations are 3.9
+
 from enum import IntEnum
 # https://github.com/danielorf/pyhubitat
 from pyhubitat import MakerAPI
@@ -54,6 +56,15 @@ class Telegram:
         return self.users[id]
 
 
+class Device:
+    def __init__(self, device: dict):
+        self.id: int = int(device["id"])
+        self.label: str = device['label']
+        self.type: str = device['type']
+        self.commands: list[str] = device['commands']
+        self.supported_commands: list[str] = []
+
+
 class DeviceGroup:
     def __init__(self, name: str, conf: dict, hubitat):
         self.hubitat = hubitat
@@ -66,18 +77,17 @@ class DeviceGroup:
     def refresh_devices(self) -> None:
         self._devices = None
 
-    def get_devices(self) -> dict:
+    def get_devices(self) -> dict[str, Device]:
 
-        def is_allowed_device(device) -> bool:
-            id = int(device["id"])
-            name = f"{device['label']}:{id}"
-            if self.allowed_device_ids and not id in self.allowed_device_ids:
+        def is_allowed_device(device: Device) -> bool:
+            name = f"{device.label}:{device.id}"
+            if self.allowed_device_ids and not device.id in self.allowed_device_ids:
                 logging.debug(f"Removing device '{name}' because not in allowed list.")
                 return False
-            if self.rejected_device_ids and id in self.rejected_device_ids:
+            if self.rejected_device_ids and device.id in self.rejected_device_ids:
                 logging.debug(f"Removing device '{name}' because in rejected list.")
                 return False
-            commands = [c['command'] for c in (device['commands'] or [])]
+            commands = [c['command'] for c in device.commands]
             supported_commands = set()
 
             for command in commands:
@@ -85,14 +95,14 @@ class DeviceGroup:
                 if bot_command:
                     supported_commands.add(bot_command)
 
-            device['supported_commands'] = supported_commands
+            device.supported_commands = supported_commands
 
             return len(supported_commands) > 0
 
         if self._devices is None:
             logging.debug(f"Refreshing device cache for device group '{self.name}'.")
             self._devices = {
-                self.case_hack(device['label']): device
+                self.case_hack(device.label): device
                 for device in self.hubitat.get_all_devices()
                 if is_allowed_device(device)}
         return self._devices
@@ -103,7 +113,7 @@ class DeviceGroup:
             name = name.lower()
         return name
 
-    def get_device(self, name: str) -> dict:
+    def get_device(self, name: str) -> dict[str, Device]:
         return self.get_devices().get(self.case_hack(name), None)
 
 
@@ -112,12 +122,11 @@ class Hubitat:
         hub = f"{conf['url']}apps/api/{conf['appid']}"
         logging.info(f"Connecting to hubitat Maker API app {hub}")
         self.api = MakerAPI(conf["token"], hub)
-        self.api.list_devices
         self.device_groups = {}
         self._devices_cache = None
         self.case_insensitive = bool(conf["case_insensitive"])
         self.device_aliases = conf["device_aliases"]
-        self.he_to_bot_commands = {'on': '/on', 'off': '/off', 'setLevel': '/dim'}
+        self.he_to_bot_commands = {'on': '/on', 'off': '/off', 'setLevel': '/dim', 'open': '/open', 'close': '/close'}
         # because Python doesn't support case insensitive searches
         # and Hubitats requires exact case, we create a dict{lowercase,requestedcase}
         self.hsm_arm = {x.lower(): x for x in conf["hsm_arm_values"]}
@@ -134,17 +143,17 @@ class Hubitat:
     def get_device_group(self, name: str) -> DeviceGroup:
         return self.device_groups[name]
 
-    def get_device_groups(self) -> list:
+    def get_device_groups(self) -> list[str]:
         return self.device_groups.values()
 
-    def get_all_devices(self) -> list:
+    def get_all_devices(self) -> list[Device]:
         if self._devices_cache is None:
             logging.info("Refreshing all devices cache")
-            self._devices_cache = self.api.list_devices_detailed()
+            self._devices_cache = [Device(x) for x in self.api.list_devices_detailed()]
 
         return self._devices_cache
 
-    def get_device(self, name: str, groups: list[str]) -> dict:
+    def get_device(self, name: str, groups: list[DeviceGroup]) -> dict[str, Device]:
         for group in groups:
             ret = group.get_device(name)
             if ret:
@@ -193,7 +202,7 @@ class Homebot:
         # lower because Python doesn't support case insensitive searches
         return ' '.join(context.args).lower()
 
-    def get_device(self, update: Update, context: CallbackContext) -> dict:
+    def get_device(self, update: Update, context: CallbackContext) -> Device:
         device_name = self.get_single_arg(context)
         if not device_name:
             self.send_text(update, context, "Device name not specified.")
@@ -232,22 +241,22 @@ class Homebot:
         self.request_access(update, context, AccessLevel.DEVICE)
         device = self.get_device(update, context)
         if device:
-            supported_commands = device['supported_commands']
+            supported_commands = device.supported_commands
             if bot_command not in supported_commands:
-                self.send_md(update, context, f"Command {bot_command} not supported by device `{device['label']}`.")
+                self.send_md(update, context, f"Command {bot_command} not supported by device `{device.label}`.")
                 return
-            logging.info(f"User {update.effective_user.id} is sending command {command} to {device['label']}")
+            logging.info(f"User {update.effective_user.id} is sending command {command} to {device.label}")
             if isinstance(command, list):
-                self.hubitat.api.send_command(device["id"], command[0], command[1])
+                self.hubitat.api.send_command(device.id, command[0], command[1])
             else:
-                self.hubitat.api.send_command(device["id"], command)
-            self.send_text(update, context, message.format(device['label']))
+                self.hubitat.api.send_command(device.id, command)
+            self.send_text(update, context, message.format(device.label))
 
     def command_device_info(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.ADMIN)
         device = self.get_device(update, context)
         if device:
-            info = self.hubitat.api.get_device_info(device['id'])
+            info = self.hubitat.api.get_device_info(device.id)
             self.send_md(update, context, [f"*{k}*: `{v}`" for k, v in info.items()])
 
     def command_refresh(self, update: Update, context: CallbackContext) -> None:
@@ -263,19 +272,38 @@ class Homebot:
         self.request_access(update, context, AccessLevel.DEVICE)
         device = self.get_device(update, context)
         if device:
-            status = self.hubitat.api.device_status(device['id'])
-            text = [f"Status for device *{device['label']}*:"]
+            status = self.hubitat.api.device_status(device.id)
+            text = [f"Status for device *{device.label}*:"]
             if self.has_access(update, AccessLevel.ADMIN):
                 text += [f"*{k}*: `{v['currentValue']}` ({v['dataType']})" for k, v in status.items()]
             else:
                 text += [f"*{k}*: `{v['currentValue']}`" for k, v in status.items()]
             self.send_md(update, context, text)
 
+    def command_device_events(self, update: Update, context: CallbackContext) -> None:
+        self.request_access(update, context, AccessLevel.HSM)
+        device = self.get_device(update, context)
+        if device:
+            events = self.hubitat.api.get_device_events(device.id)
+            text = [f"Events for device *{device.label}*:```"]
+
+            def row(date, name, value) -> str:
+                return f"{date :24}|{name :12}|{value:10}"
+
+            text.append(row("date", "name", "value"))
+
+            for event in events:
+                text.append(row(event['date'], event['name'], event['value']))
+
+            text.append("```")
+
+            self.send_md(update, context, text)
+
     def command_unknown(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "Unknown command.")
         self.command_help(update, context)
 
-    def list_devices(self, update: Update, context: CallbackContext, devices: dict, title: str):
+    def list_devices(self, update: Update, context: CallbackContext, devices: dict[str, Device], title: str):
         self.request_access(update, context, AccessLevel.DEVICE)
         devices_text = []
         if title:
@@ -284,9 +312,9 @@ class Homebot:
             devices_text.append("No devices.")
         else:
             if self.has_access(update, AccessLevel.ADMIN):
-                devices_text += [f"*{info['label']}*: `{info['id']}` ({info['type']})" for name, info in sorted(devices.items())]
+                devices_text += [f"*{info.label}*: `{info.id}` ({info.type})" for name, info in sorted(devices.items())]
             else:
-                devices_text += [info['label'] for name, info in sorted(devices.items())]
+                devices_text += [info.label for name, info in sorted(devices.items())]
         self.send_md(update, context, devices_text)
 
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
@@ -296,10 +324,9 @@ class Homebot:
         devices = {}
         for device_group in device_groups:
             for device in device_group.get_devices().values():
-                name = device['label']
                 # lower(): Hack because Python doesn't support case-insensitive searches
-                if device_filter in name.lower():
-                    devices[name] = device
+                if device_filter in device.label.lower():
+                    devices[device.label] = device
 
         self.list_devices(update, context, devices, None)
 
@@ -320,11 +347,17 @@ class Homebot:
         logging.warning(f"Unknown UserId {update.effective_user.id} with handle {update.effective_user.name} is attempting to use the bot.")
         self.send_text(update, context, self.telegram.rejected_message)
 
-    def command_turn_on(self, update: Update, context: CallbackContext) -> None:
+    def command_device_on(self, update: Update, context: CallbackContext) -> None:
         self.device_actuator(update, context, "on", "/on", "Turned on {}.")
 
-    def command_turn_off(self, update: Update, context: CallbackContext) -> None:
+    def command_device_off(self, update: Update, context: CallbackContext) -> None:
         self.device_actuator(update, context, "off", "/off", "Turned off {}.")
+
+    def command_device_open(self, update: Update, context: CallbackContext) -> None:
+        self.device_actuator(update, context, "open", "/open", "Opened on {}.")
+
+    def command_device_close(self, update: Update, context: CallbackContext) -> None:
+        self.device_actuator(update, context, "close", "/close", "Closed off {}.")
 
     def command_list_users(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.ADMIN)
@@ -345,7 +378,7 @@ class Homebot:
             return None
         return percent if 100 >= percent >= 0 else None
 
-    def command_dim(self,  update: Update, context: CallbackContext) -> None:
+    def command_device_dim(self,  update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.DEVICE)
         if len(context.args) < 2:
             self.send_text(update, context, "Dim level and device name must be specified.")
@@ -396,14 +429,14 @@ class Homebot:
             state = self.hubitat.api._request_sender('hsm').json()
             self.send_text(update, context, f"State: {state['hsm']}")
 
-    def command_commands(self, update: Update, context: CallbackContext) -> None:
+    def command_device_commands(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.DEVICE)
         device = self.get_device(update, context)
-        supported_commands = device['supported_commands']
+        supported_commands = device.supported_commands
         if supported_commands:
-            self.send_md(update, context, f"Supported commands for `{device['label']}`: {', '.join(supported_commands)}.")
+            self.send_md(update, context, f"Supported commands for *{device.label}*: {', '.join(supported_commands)}.")
         else:
-            self.send_md(update, context, f"No supported commands for `{device['label']}`.")
+            self.send_md(update, context, f"No supported commands for *{device.label}*.")
 
     def configure(self) -> None:
         dispatcher = self.telegram.dispatcher
@@ -411,16 +444,19 @@ class Homebot:
         # Reject anyone we don't know
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
-        self.add_command(['commands', 'c'], 'list supported commands for device `name`', self.command_commands, AccessLevel.DEVICE, params="name")
-        self.add_command(['dim', 'd'], 'dim device `name` by `number` percent', self.command_dim, AccessLevel.DEVICE, params="number name")
+        self.add_command(['close'], 'close device `name`', self.command_device_close, AccessLevel.DEVICE, params="name")
+        self.add_command(['commands', 'c'], 'list supported commands for device `name`', self.command_device_commands, AccessLevel.DEVICE, params="name")
+        self.add_command(['dim', 'd'], 'dim device `name` by `number` percent', self.command_device_dim, AccessLevel.DEVICE, params="number name")
+        self.add_command(['events', 'e'], 'Get recent events for device `name`', self.command_device_events, AccessLevel.HSM, params="name")
         self.add_command(['groups', 'g'], 'get device groups, optionally filtering name by `filter`', self.command_list_groups, AccessLevel.ADMIN, params="filter")
         self.add_command(['help', 'h'], 'display help', self.command_help, AccessLevel.NONE)  # sadly '/?' is not a valid command
         self.add_command(['arm', 'a'], 'get hsm arm status or arm to `value`', self.command_hsm, AccessLevel.HSM, "value")
         self.add_command(['info', 'i'], 'get info of device `name`', self.command_device_info, AccessLevel.ADMIN, params="name")
         self.add_command(['list', 'l'], 'get devices, optionally filtering name by `filter`', self.command_list_devices, AccessLevel.DEVICE, params="filter")
         self.add_command(['mode', 'm'], 'lists modes or set mode to `value`', self.command_mode, AccessLevel.HSM, params="value")
-        self.add_command(['off'], 'turn off device `name`', self.command_turn_off, AccessLevel.DEVICE, params="name")
-        self.add_command(['on'], 'turn on device `name`', self.command_turn_on, AccessLevel.DEVICE, params="name")
+        self.add_command(['off'], 'turn off device `name`', self.command_device_off, AccessLevel.DEVICE, params="name")
+        self.add_command(['on'], 'turn on device `name`', self.command_device_on, AccessLevel.DEVICE, params="name")
+        self.add_command(['open'], 'open device `name`', self.command_device_open, AccessLevel.DEVICE, params="name")
         self.add_command(['refresh', 'r'], 'refresh list of devices', self.command_refresh, AccessLevel.ADMIN)
         self.add_command(['status', 's'], 'get status of device `name`', self.command_device_status, AccessLevel.DEVICE, params="name")
         self.add_command(['users', 'u'], 'get users', self.command_list_users, AccessLevel.ADMIN)
