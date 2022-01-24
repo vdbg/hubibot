@@ -3,19 +3,20 @@
 from __future__ import annotations  # because raspberry pi is on Python 3.7 and annotations are 3.9
 
 from enum import IntEnum
+
 # https://github.com/danielorf/pyhubitat
 from pyhubitat import MakerAPI
 import logging
 from pathlib import Path
 import re
+
 # https://github.com/python-telegram-bot/python-telegram-bot
 from telegram import Update, ParseMode
 from telegram.ext import CallbackContext, CommandHandler, MessageHandler, Filters, Updater
 from typing import Union
 import yaml
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    level=logging.INFO)
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 
 class AccessLevel(IntEnum):
@@ -59,9 +60,9 @@ class Telegram:
 class Device:
     def __init__(self, device: dict):
         self.id: int = int(device["id"])
-        self.label: str = device['label']
-        self.type: str = device['type']
-        self.commands: list[str] = device['commands']
+        self.label: str = device["label"]
+        self.type: str = device["type"]
+        self.commands: list[str] = device["commands"]
         self.supported_commands: list[str] = []
 
 
@@ -78,7 +79,6 @@ class DeviceGroup:
         self._devices = None
 
     def get_devices(self) -> dict[str, Device]:
-
         def is_allowed_device(device: Device) -> bool:
             name = f"{device.label}:{device.id}"
             if self.allowed_device_ids and not device.id in self.allowed_device_ids:
@@ -87,7 +87,7 @@ class DeviceGroup:
             if self.rejected_device_ids and device.id in self.rejected_device_ids:
                 logging.debug(f"Removing device '{name}' because in rejected list.")
                 return False
-            commands = [c['command'] for c in device.commands]
+            commands = [c["command"] for c in device.commands]
             supported_commands = set()
 
             for command in commands:
@@ -101,10 +101,7 @@ class DeviceGroup:
 
         if self._devices is None:
             logging.debug(f"Refreshing device cache for device group '{self.name}'.")
-            self._devices = {
-                self.case_hack(device.label): device
-                for device in self.hubitat.get_all_devices()
-                if is_allowed_device(device)}
+            self._devices = {self.case_hack(device.label): device for device in self.hubitat.get_all_devices() if is_allowed_device(device)}
         return self._devices
 
     def case_hack(self, name: str) -> str:
@@ -126,7 +123,7 @@ class Hubitat:
         self._devices_cache = None
         self.case_insensitive = bool(conf["case_insensitive"])
         self.device_aliases = conf["device_aliases"]
-        self.he_to_bot_commands = {'on': '/on', 'off': '/off', 'setLevel': '/dim', 'open': '/open', 'close': '/close'}
+        self.he_to_bot_commands = {"on": "/on", "off": "/off", "setLevel": "/dim", "open": "/open", "close": "/close"}
         # because Python doesn't support case insensitive searches
         # and Hubitats requires exact case, we create a dict{lowercase,requestedcase}
         self.hsm_arm = {x.lower(): x for x in conf["hsm_arm_values"]}
@@ -162,16 +159,10 @@ class Hubitat:
 
 
 class Homebot:
-
     def __init__(self, telegram: Telegram, hubitat: Hubitat):
         self.telegram = telegram
         self.hubitat = hubitat
-        self.list_commands = {
-            AccessLevel.NONE: [],
-            AccessLevel.DEVICE: ["*Device commands*:"],
-            AccessLevel.ADMIN:  ["*Admin commands*:"],
-            AccessLevel.HSM: ["*Hubitat Safety Monitor commands*:"]
-        }
+        self.list_commands = {AccessLevel.NONE: [], AccessLevel.DEVICE: ["*Device commands*:"], AccessLevel.ADMIN: ["*Admin commands*:"], AccessLevel.HSM: ["*Hubitat Safety Monitor commands*:"]}
 
     def send_text(self, update: Update, context: CallbackContext, text: Union[str, list[str]]) -> None:
         self.send_text_or_list(update, context, text, None)
@@ -194,13 +185,13 @@ class Homebot:
             helptxt = helptxt + "/" + str
             self.telegram.dispatcher.add_handler(CommandHandler(str, fn, Filters.user(self.telegram.users)))
         if params:
-            helptxt = helptxt + " `"+params+"`"
+            helptxt = helptxt + " `" + params + "`"
         helptxt = helptxt + ": " + hlp
         self.list_commands[access_level].append(helptxt)
 
     def get_single_arg(self, context: CallbackContext) -> str:
         # lower because Python doesn't support case insensitive searches
-        return ' '.join(context.args).lower()
+        return " ".join(context.args).lower()
 
     def get_device(self, update: Update, context: CallbackContext) -> Device:
         device_name = self.get_single_arg(context)
@@ -293,7 +284,7 @@ class Homebot:
             text.append(row("date", "name", "value"))
 
             for event in events:
-                text.append(row(event['date'], event['name'], event['value']))
+                text.append(row(event["date"], event["name"], event["value"]))
 
             text.append("```")
 
@@ -378,7 +369,7 @@ class Homebot:
             return None
         return percent if 100 >= percent >= 0 else None
 
-    def command_device_dim(self,  update: Update, context: CallbackContext) -> None:
+    def command_device_dim(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.DEVICE)
         if len(context.args) < 2:
             self.send_text(update, context, "Dim level and device name must be specified.")
@@ -388,16 +379,16 @@ class Homebot:
             self.send_text(update, context, "Invalid dim level specified: must be an int between 0 and 100.")
             return
         context.args = context.args[1:]
-        self.device_actuator(update, context, ["setLevel", percent], "/dim", "Dimmed {} to "+str(percent)+"%")
+        self.device_actuator(update, context, ["setLevel", percent], "/dim", "Dimmed {} to " + str(percent) + "%")
 
     def command_mode(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.HSM)
-        modes = self.hubitat.api._request_sender('modes').json()
-        if (len(context.args) > 0):
+        modes = self.hubitat.api._request_sender("modes").json()
+        if len(context.args) > 0:
             # mode change requested
             mode_requested = self.get_single_arg(context)
             for mode in modes:
-                if mode['name'].lower() == mode_requested:
+                if mode["name"].lower() == mode_requested:
                     logging.info(f"User {update.effective_user.id} is setting mode to {mode['name']}")
                     self.hubitat.api._request_sender(f"modes/{mode['id']}")
                     self.send_text(update, context, "Mode change completed.")
@@ -406,10 +397,10 @@ class Homebot:
 
         text = []
         for mode in modes:
-            if mode['active']:
-                text.append(mode['name'] + " (*)")
+            if mode["active"]:
+                text.append(mode["name"] + " (*)")
             else:
-                text.append(mode['name'])
+                text.append(mode["name"])
 
         self.send_text(update, context, ", ".join(text))
 
@@ -426,7 +417,7 @@ class Homebot:
             else:
                 self.send_text(update, context, f"Invalid arm state. Supported values: {', '.join(self.hubitat.hsm_arm.values())}.")
         else:
-            state = self.hubitat.api._request_sender('hsm').json()
+            state = self.hubitat.api._request_sender("hsm").json()
             self.send_text(update, context, f"State: {state['hsm']}")
 
     def command_device_commands(self, update: Update, context: CallbackContext) -> None:
@@ -444,22 +435,22 @@ class Homebot:
         # Reject anyone we don't know
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
-        self.add_command(['close'], 'close device `name`', self.command_device_close, AccessLevel.DEVICE, params="name")
-        self.add_command(['commands', 'c'], 'list supported commands for device `name`', self.command_device_commands, AccessLevel.DEVICE, params="name")
-        self.add_command(['dim', 'd'], 'dim device `name` by `number` percent', self.command_device_dim, AccessLevel.DEVICE, params="number name")
-        self.add_command(['events', 'e'], 'Get recent events for device `name`', self.command_device_events, AccessLevel.HSM, params="name")
-        self.add_command(['groups', 'g'], 'get device groups, optionally filtering name by `filter`', self.command_list_groups, AccessLevel.ADMIN, params="filter")
-        self.add_command(['help', 'h'], 'display help', self.command_help, AccessLevel.NONE)  # sadly '/?' is not a valid command
-        self.add_command(['arm', 'a'], 'get hsm arm status or arm to `value`', self.command_hsm, AccessLevel.HSM, "value")
-        self.add_command(['info', 'i'], 'get info of device `name`', self.command_device_info, AccessLevel.ADMIN, params="name")
-        self.add_command(['list', 'l'], 'get devices, optionally filtering name by `filter`', self.command_list_devices, AccessLevel.DEVICE, params="filter")
-        self.add_command(['mode', 'm'], 'lists modes or set mode to `value`', self.command_mode, AccessLevel.HSM, params="value")
-        self.add_command(['off'], 'turn off device `name`', self.command_device_off, AccessLevel.DEVICE, params="name")
-        self.add_command(['on'], 'turn on device `name`', self.command_device_on, AccessLevel.DEVICE, params="name")
-        self.add_command(['open'], 'open device `name`', self.command_device_open, AccessLevel.DEVICE, params="name")
-        self.add_command(['refresh', 'r'], 'refresh list of devices', self.command_refresh, AccessLevel.ADMIN)
-        self.add_command(['status', 's'], 'get status of device `name`', self.command_device_status, AccessLevel.DEVICE, params="name")
-        self.add_command(['users', 'u'], 'get users', self.command_list_users, AccessLevel.ADMIN)
+        self.add_command(["close"], "close device `name`", self.command_device_close, AccessLevel.DEVICE, params="name")
+        self.add_command(["commands", "c"], "list supported commands for device `name`", self.command_device_commands, AccessLevel.DEVICE, params="name")
+        self.add_command(["dim", "d"], "dim device `name` by `number` percent", self.command_device_dim, AccessLevel.DEVICE, params="number name")
+        self.add_command(["events", "e"], "Get recent events for device `name`", self.command_device_events, AccessLevel.HSM, params="name")
+        self.add_command(["groups", "g"], "get device groups, optionally filtering name by `filter`", self.command_list_groups, AccessLevel.ADMIN, params="filter")
+        self.add_command(["help", "h"], "display help", self.command_help, AccessLevel.NONE)  # sadly '/?' is not a valid command
+        self.add_command(["arm", "a"], "get hsm arm status or arm to `value`", self.command_hsm, AccessLevel.HSM, "value")
+        self.add_command(["info", "i"], "get info of device `name`", self.command_device_info, AccessLevel.ADMIN, params="name")
+        self.add_command(["list", "l"], "get devices, optionally filtering name by `filter`", self.command_list_devices, AccessLevel.DEVICE, params="filter")
+        self.add_command(["mode", "m"], "lists modes or set mode to `value`", self.command_mode, AccessLevel.HSM, params="value")
+        self.add_command(["off"], "turn off device `name`", self.command_device_off, AccessLevel.DEVICE, params="name")
+        self.add_command(["on"], "turn on device `name`", self.command_device_on, AccessLevel.DEVICE, params="name")
+        self.add_command(["open"], "open device `name`", self.command_device_open, AccessLevel.DEVICE, params="name")
+        self.add_command(["refresh", "r"], "refresh list of devices", self.command_refresh, AccessLevel.ADMIN)
+        self.add_command(["status", "s"], "get status of device `name`", self.command_device_status, AccessLevel.DEVICE, params="name")
+        self.add_command(["users", "u"], "get users", self.command_list_users, AccessLevel.ADMIN)
 
         dispatcher.add_handler(MessageHandler(Filters.command, self.command_unknown))
         dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_text))
