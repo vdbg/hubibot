@@ -61,7 +61,7 @@ class Device:
         self.id: int = int(device["id"])
         self.label: str = device['label']
         self.type: str = device['type']
-        self.commands: list[str] = device['commands'] or []
+        self.commands: list[str] = device['commands']
         self.supported_commands: list[str] = []
 
 
@@ -298,7 +298,6 @@ class Homebot:
             text.append("```")
 
             self.send_md(update, context, text)
-            print(events)
 
     def command_unknown(self, update: Update, context: CallbackContext) -> None:
         self.send_text(update, context, "Unknown command.")
