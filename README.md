@@ -85,3 +85,12 @@ There are two methods for getting a Telegram user Id:
 1. Ask that user to write to the @userinfobot to get their user Id
 2. Ensure `main:logVerbosity` is set to `WARNING` or higher in `config.yaml` and ask that user to write to the bot. There will be a warning in the logs with that user's Id and handle.
 
+## Authoring
+
+Style:
+
+* From command line: `pip3 install black`,
+* In VS code: Settings,
+    * Text Editor, Formatting, Format On Save: checked
+    * Python, Formatting, Provider: `black`
+    * Python, Formatting, Black Args, Add item: `--line-length=200`
