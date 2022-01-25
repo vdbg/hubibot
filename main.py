@@ -22,7 +22,7 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 class AccessLevel(IntEnum):
     NONE = 0
     DEVICE = 1
-    HSM = 2
+    SECURITY = 2
     ADMIN = 3
 
 
@@ -91,8 +91,8 @@ class DeviceGroup:
             supported_commands = set()
 
             for command in commands:
-                bot_command = self.hubitat.he_to_bot_commands.get(command, None)
-                if bot_command:
+                if command in self.hubitat.he_to_bot_commands:
+                    bot_command = self.hubitat.he_to_bot_commands[command] or "/" + command
                     supported_commands.add(bot_command)
 
             device.supported_commands = supported_commands
@@ -123,7 +123,7 @@ class Hubitat:
         self._devices_cache = None
         self.case_insensitive = bool(conf["case_insensitive"])
         self.device_aliases = conf["device_aliases"]
-        self.he_to_bot_commands = {"on": "/on", "off": "/off", "setLevel": "/dim", "open": "/open", "close": "/close"}
+        self.he_to_bot_commands = {"on": None, "off": None, "setLevel": "/dim", "open": None, "close": None, "lock": None, "unlock": None}
         # because Python doesn't support case insensitive searches
         # and Hubitats requires exact case, we create a dict{lowercase,requestedcase}
         self.hsm_arm = {x.lower(): x for x in conf["hsm_arm_values"]}
@@ -162,7 +162,7 @@ class Homebot:
     def __init__(self, telegram: Telegram, hubitat: Hubitat):
         self.telegram = telegram
         self.hubitat = hubitat
-        self.list_commands = {AccessLevel.NONE: [], AccessLevel.DEVICE: ["*Device commands*:"], AccessLevel.ADMIN: ["*Admin commands*:"], AccessLevel.HSM: ["*Hubitat Safety Monitor commands*:"]}
+        self.list_commands = {AccessLevel.NONE: [], AccessLevel.DEVICE: ["*Device commands*:"], AccessLevel.ADMIN: ["*Admin commands*:"], AccessLevel.SECURITY: ["*Security commands*:"]}
 
     def send_text(self, update: Update, context: CallbackContext, text: Union[str, list[str]]) -> None:
         self.send_text_or_list(update, context, text, None)
@@ -224,12 +224,12 @@ class Homebot:
 
     def request_access(self, update: Update, context: CallbackContext, access_level: AccessLevel) -> None:
         if not self.has_access(update, access_level):
-            # user attempting to use admin/device/hsm command without perm, pretend it doesn't exist
+            # user attempting to use admin/device/security command without perm, pretend it doesn't exist
             self.command_unknown(update, context)
             raise PermissionError(f"UserId {update.effective_user.id}, handle {update.effective_user.name} is attempting level {access_level} command without permission.")
 
-    def device_actuator(self, update: Update, context: CallbackContext, command: Union[str, list], bot_command: str, message: str) -> None:
-        self.request_access(update, context, AccessLevel.DEVICE)
+    def device_actuator(self, update: Update, context: CallbackContext, command: Union[str, list], bot_command: str, message: str, access_level=AccessLevel.DEVICE) -> None:
+        self.request_access(update, context, access_level)
         device = self.get_device(update, context)
         if device:
             supported_commands = device.supported_commands
@@ -266,13 +266,13 @@ class Homebot:
             status = self.hubitat.api.device_status(device.id)
             text = [f"Status for device *{device.label}*:"]
             if self.has_access(update, AccessLevel.ADMIN):
-                text += [f"*{k}*: `{v['currentValue']}` ({v['dataType']})" for k, v in status.items()]
+                text += [f"*{k}*: `{v['currentValue']}` ({v['dataType']})" for k, v in status.items() if v["dataType"] != "JSON_OBJECT"]
             else:
-                text += [f"*{k}*: `{v['currentValue']}`" for k, v in status.items()]
+                text += [f"*{k}*: `{v['currentValue']}`" for k, v in status.items() if v["dataType"] != "JSON_OBJECT"]
             self.send_md(update, context, text)
 
     def command_device_events(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.HSM)
+        self.request_access(update, context, AccessLevel.SECURITY)
         device = self.get_device(update, context)
         if device:
             events = self.hubitat.api.get_device_events(device.id)
@@ -345,10 +345,16 @@ class Homebot:
         self.device_actuator(update, context, "off", "/off", "Turned off {}.")
 
     def command_device_open(self, update: Update, context: CallbackContext) -> None:
-        self.device_actuator(update, context, "open", "/open", "Opened on {}.")
+        self.device_actuator(update, context, "open", "/open", "Opened {}.")
 
     def command_device_close(self, update: Update, context: CallbackContext) -> None:
-        self.device_actuator(update, context, "close", "/close", "Closed off {}.")
+        self.device_actuator(update, context, "close", "/close", "Closed {}.")
+
+    def command_device_lock(self, update: Update, context: CallbackContext) -> None:
+        self.device_actuator(update, context, "lock", "/lock", "Locked {}.", access_level=AccessLevel.SECURITY)
+
+    def command_device_unlock(self, update: Update, context: CallbackContext) -> None:
+        self.device_actuator(update, context, "unlock", "/unlock", "Unlocked {}.", access_level=AccessLevel.SECURITY)
 
     def command_list_users(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.ADMIN)
@@ -382,7 +388,7 @@ class Homebot:
         self.device_actuator(update, context, ["setLevel", percent], "/dim", "Dimmed {} to " + str(percent) + "%")
 
     def command_mode(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.HSM)
+        self.request_access(update, context, AccessLevel.SECURITY)
         modes = self.hubitat.api._request_sender("modes").json()
         if len(context.args) > 0:
             # mode change requested
@@ -405,7 +411,7 @@ class Homebot:
         self.send_text(update, context, ", ".join(text))
 
     def command_hsm(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.HSM)
+        self.request_access(update, context, AccessLevel.SECURITY)
         if len(context.args) > 0:
             # mode change requested
             hsm_requested = self.get_single_arg(context)
@@ -438,26 +444,28 @@ class Homebot:
         self.add_command(["close"], "close device `name`", self.command_device_close, AccessLevel.DEVICE, params="name")
         self.add_command(["commands", "c"], "list supported commands for device `name`", self.command_device_commands, AccessLevel.DEVICE, params="name")
         self.add_command(["dim", "d"], "dim device `name` by `number` percent", self.command_device_dim, AccessLevel.DEVICE, params="number name")
-        self.add_command(["events", "e"], "Get recent events for device `name`", self.command_device_events, AccessLevel.HSM, params="name")
+        self.add_command(["events", "e"], "get recent events for device `name`", self.command_device_events, AccessLevel.SECURITY, params="name")
         self.add_command(["groups", "g"], "get device groups, optionally filtering name by `filter`", self.command_list_groups, AccessLevel.ADMIN, params="filter")
         self.add_command(["help", "h"], "display help", self.command_help, AccessLevel.NONE)  # sadly '/?' is not a valid command
-        self.add_command(["arm", "a"], "get hsm arm status or arm to `value`", self.command_hsm, AccessLevel.HSM, "value")
+        self.add_command(["arm", "a"], "get hsm arm status or arm to `value`", self.command_hsm, AccessLevel.SECURITY, "value")
         self.add_command(["info", "i"], "get info of device `name`", self.command_device_info, AccessLevel.ADMIN, params="name")
         self.add_command(["list", "l"], "get devices, optionally filtering name by `filter`", self.command_list_devices, AccessLevel.DEVICE, params="filter")
-        self.add_command(["mode", "m"], "lists modes or set mode to `value`", self.command_mode, AccessLevel.HSM, params="value")
+        self.add_command(["lock"], "lock device `name`", self.command_device_lock, AccessLevel.SECURITY, params="name")
+        self.add_command(["mode", "m"], "lists modes or set mode to `value`", self.command_mode, AccessLevel.SECURITY, params="value")
         self.add_command(["off"], "turn off device `name`", self.command_device_off, AccessLevel.DEVICE, params="name")
         self.add_command(["on"], "turn on device `name`", self.command_device_on, AccessLevel.DEVICE, params="name")
         self.add_command(["open"], "open device `name`", self.command_device_open, AccessLevel.DEVICE, params="name")
         self.add_command(["refresh", "r"], "refresh list of devices", self.command_refresh, AccessLevel.ADMIN)
         self.add_command(["status", "s"], "get status of device `name`", self.command_device_status, AccessLevel.DEVICE, params="name")
+        self.add_command(["unlock"], "lock device `name`", self.command_device_unlock, AccessLevel.SECURITY, params="name")
         self.add_command(["users", "u"], "get users", self.command_list_users, AccessLevel.ADMIN)
 
         dispatcher.add_handler(MessageHandler(Filters.command, self.command_unknown))
         dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_text))
 
         self.list_commands[AccessLevel.DEVICE] += self.list_commands[AccessLevel.NONE]
-        self.list_commands[AccessLevel.HSM] += self.list_commands[AccessLevel.DEVICE]
-        self.list_commands[AccessLevel.ADMIN] += self.list_commands[AccessLevel.HSM]
+        self.list_commands[AccessLevel.SECURITY] += self.list_commands[AccessLevel.DEVICE]
+        self.list_commands[AccessLevel.ADMIN] += self.list_commands[AccessLevel.SECURITY]
 
     def run(self) -> None:
         self.telegram.updater.start_polling()
