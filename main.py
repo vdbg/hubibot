@@ -222,11 +222,19 @@ class Homebot:
     def has_access(self, update: Update, access_level: AccessLevel) -> bool:
         return self.get_user(update).has_access(access_level)
 
+    def get_user_info(self, update: Update) -> str:
+        return f"UserId {update.effective_user.id} ({update.effective_user.name})"
+
+    def log_command(self, update: Update, command: str, device: Device = None) -> None:
+        if device:
+            command = command + " " + device.label
+        logging.info(f"{self.get_user_info(update)} is sending command: {command}")
+
     def request_access(self, update: Update, context: CallbackContext, access_level: AccessLevel) -> None:
         if not self.has_access(update, access_level):
             # user attempting to use admin/device/security command without perm, pretend it doesn't exist
             self.command_unknown(update, context)
-            raise PermissionError(f"UserId {update.effective_user.id}, handle {update.effective_user.name} is attempting level {access_level} command without permission.")
+            raise PermissionError(f"{self.get_user_info(update)} is attempting level {access_level} command without permission.")
 
     def device_actuator(self, update: Update, context: CallbackContext, command: Union[str, list], bot_command: str, message: str, access_level=AccessLevel.DEVICE) -> None:
         self.request_access(update, context, access_level)
@@ -236,7 +244,7 @@ class Homebot:
             if bot_command not in supported_commands:
                 self.send_md(update, context, f"Command {bot_command} not supported by device `{device.label}`.")
                 return
-            logging.info(f"User {update.effective_user.id} is sending command {command} to {device.label}")
+            self.log_command(update, bot_command, device)
             if isinstance(command, list):
                 self.hubitat.api.send_command(device.id, command[0], command[1])
             else:
@@ -248,6 +256,7 @@ class Homebot:
         device = self.get_device(update, context)
         if device:
             info = self.hubitat.api.get_device_info(device.id)
+            self.log_command(update, "/info", device)
             self.send_md(update, context, [f"*{k}*: `{v}`" for k, v in info.items()])
 
     def command_refresh(self, update: Update, context: CallbackContext) -> None:
@@ -263,6 +272,7 @@ class Homebot:
         self.request_access(update, context, AccessLevel.DEVICE)
         device = self.get_device(update, context)
         if device:
+            self.log_command(update, "/status", device)
             status = self.hubitat.api.device_status(device.id)
             text = [f"Status for device *{device.label}*:"]
             if self.has_access(update, AccessLevel.ADMIN):
@@ -275,6 +285,7 @@ class Homebot:
         self.request_access(update, context, AccessLevel.SECURITY)
         device = self.get_device(update, context)
         if device:
+            self.log_command(update, "/events", device)
             events = self.hubitat.api.get_device_events(device.id)
             text = [f"Events for device *{device.label}*:```"]
 
@@ -335,7 +346,7 @@ class Homebot:
         self.send_md(update, context, self.list_commands[self.get_user(update).access_level])
 
     def command_unknown_user(self, update: Update, context: CallbackContext) -> None:
-        logging.warning(f"Unknown UserId {update.effective_user.id} with handle {update.effective_user.name} is attempting to use the bot.")
+        logging.warning(f"Unknown {self.get_user_info(update)} is attempting to use the bot.")
         self.send_text(update, context, self.telegram.rejected_message)
 
     def command_device_on(self, update: Update, context: CallbackContext) -> None:
@@ -395,7 +406,7 @@ class Homebot:
             mode_requested = self.get_single_arg(context)
             for mode in modes:
                 if mode["name"].lower() == mode_requested:
-                    logging.info(f"User {update.effective_user.id} is setting mode to {mode['name']}")
+                    self.log_command(update, f"/mode {mode['name']}")
                     self.hubitat.api._request_sender(f"modes/{mode['id']}")
                     self.send_text(update, context, "Mode change completed.")
                     return
@@ -417,7 +428,7 @@ class Homebot:
             hsm_requested = self.get_single_arg(context)
             if hsm_requested in self.hubitat.hsm_arm:
                 hsm = self.hubitat.hsm_arm[hsm_requested]
-                logging.info(f"User {update.effective_user.id} is performing {hsm} hsm command")
+                self.log_command(update, f"/arm {hsm}")
                 self.hubitat.api._request_sender(f"hsm/{hsm}")
                 self.send_text(update, context, "Arm request sent.")
             else:
