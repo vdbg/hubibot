@@ -219,6 +219,11 @@ class Homebot:
         self.send_text(update, context, "Device not found. '/l' to get list of devices.")
         return None
 
+    def markdown_escape(self, text: str) -> str:
+        text = re.sub(r"([_*\[\]()~`>\#\+\-=|\.!])", r"\\\1", text)
+        text = re.sub(r"\\\\([_*\[\]()~`>\#\+\-=|\.!])", r"\1", text)
+        return text
+
     def get_timezone(self, context: CallbackContext) -> str:
         return context.user_data.get("tz", None)
 
@@ -323,28 +328,28 @@ class Homebot:
             tz = self.get_timezone(context)
 
             def row(date, name, value) -> str:
-                return f"{date :24}|{name :12}|{value:10}"
+                return f"{date :20}|{name :12}|{value:10}"
 
             tz_text = "UTC"
 
             if tz:
-                # replace "Los_Angeles" with "Los Angeles" because unmatched _ breaks md
-                tz_text = tz.replace("_", " ")
+                tz_text = self.markdown_escape(tz)
                 tz = pytz.timezone(tz)
 
             text = [f"Events for device *{device.label}*, timezone {tz_text}:", "```", row("date", "name", "value")]
 
             for event in events:
                 event_date: datetime = event["date"]
+
+                # event_date is a string in ISO 8601 format
+                # e.g. 2022-02-03T04:02:32+0000
+                # start by transforming into a real datetime
+                event_date = datetime.datetime.strptime(event_date, "%Y-%m-%dT%H:%M:%S%z")
                 if tz:
-                    # event_date is a string in ISO 8601 format
-                    # e.g. 2022-02-03T04:02:32+0000
-                    # start by transforming into a real datetime
-                    event_date = datetime.datetime.strptime(event_date, "%Y-%m-%dT%H:%M:%S%z")
                     # now transform it to the proper tz
                     event_date = event_date.astimezone(tz)
-                    # and ... convert back to string.
-                    event_date = event_date.strftime("%Y-%m-%d %H:%M:%S")
+                # and ... convert back to string.
+                event_date = event_date.strftime("%Y-%m-%d %H:%M:%S")
 
                 text.append(row(event_date, event["name"], event["value"]))
 
