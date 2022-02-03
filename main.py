@@ -2,12 +2,15 @@
 
 from __future__ import annotations  # because raspberry pi is on Python 3.7 and annotations are 3.9
 
+
+import datetime
 from enum import IntEnum
 
 # https://github.com/danielorf/pyhubitat
 from pyhubitat import MakerAPI
 import logging
 from pathlib import Path
+import pytz  # timezones
 import re
 
 # https://github.com/python-telegram-bot/python-telegram-bot
@@ -216,6 +219,12 @@ class Homebot:
         self.send_text(update, context, "Device not found. '/l' to get list of devices.")
         return None
 
+    def get_timezone(self, context: CallbackContext) -> str:
+        return context.user_data.get("tz", None)
+
+    def set_timezone(self, context: CallbackContext, value: str) -> None:
+        context.user_data["tz"] = value
+
     def get_user(self, update: Update) -> BotUser:
         return self.telegram.get_user(update.effective_user.id)
 
@@ -281,21 +290,63 @@ class Homebot:
                 text += [f"*{k}*: `{v['currentValue']}`" for k, v in status.items() if v["dataType"] != "JSON_OBJECT"]
             self.send_md(update, context, text)
 
+    def get_matching_timezones(self, input: str) -> list[str]:
+        input = input.lower()
+        return [v for v in pytz.common_timezones if input in v.lower()]
+
+    def command_timezone(self, update: Update, context: CallbackContext) -> None:
+        timezone = " ".join(context.args)
+        if timezone:
+            if timezone in pytz.all_timezones_set:
+                self.set_timezone(context, timezone)
+                self.send_text(update, context, "Timezone set")
+            else:
+                hits = self.get_matching_timezones(timezone)
+                if not hits:
+                    hits = pytz.common_timezones
+                hits = hits[0:10]
+                self.send_text(update, context, "Invalid timezone. Valid timezones are: " + ", ".join(hits) + ", ...")
+        else:
+            timezone = self.get_timezone(context)
+            if timezone:
+                self.send_text(update, context, f"User timezone is: {timezone}.")
+            else:
+                self.send_text(update, context, "No timezone set for current user. Using UTC.")
+
     def command_device_events(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.SECURITY)
         device = self.get_device(update, context)
         if device:
             self.log_command(update, "/events", device)
             events = self.hubitat.api.get_device_events(device.id)
-            text = [f"Events for device *{device.label}*:```"]
+
+            tz = self.get_timezone(context)
 
             def row(date, name, value) -> str:
                 return f"{date :24}|{name :12}|{value:10}"
 
-            text.append(row("date", "name", "value"))
+            tz_text = "UTC"
+
+            if tz:
+                # replace "Los_Angeles" with "Los Angeles" because unmatched _ breaks md
+                tz_text = tz.replace("_", " ")
+                tz = pytz.timezone(tz)
+
+            text = [f"Events for device *{device.label}*, timezone {tz_text}:", "```", row("date", "name", "value")]
 
             for event in events:
-                text.append(row(event["date"], event["name"], event["value"]))
+                event_date: datetime = event["date"]
+                if tz:
+                    # event_date is a string in ISO 8601 format
+                    # e.g. 2022-02-03T04:02:32+0000
+                    # start by transforming into a real datetime
+                    event_date = datetime.datetime.strptime(event_date, "%Y-%m-%dT%H:%M:%S%z")
+                    # now transform it to the proper tz
+                    event_date = event_date.astimezone(tz)
+                    # and ... convert back to string.
+                    event_date = event_date.strftime("%Y-%m-%d %H:%M:%S")
+
+                text.append(row(event_date, event["name"], event["value"]))
 
             text.append("```")
 
@@ -314,7 +365,7 @@ class Homebot:
             devices_text.append("No devices.")
         else:
             if self.has_access(update, AccessLevel.ADMIN):
-                devices_text += [f"*{info.label}*: `{info.id}` ({info.type})" for name, info in sorted(devices.items())]
+                devices_text += [f"{info.label}: `{info.id}` ({info.type})" for name, info in sorted(devices.items())]
             else:
                 devices_text += [info.label for name, info in sorted(devices.items())]
         self.send_md(update, context, devices_text)
@@ -468,6 +519,7 @@ class Homebot:
         self.add_command(["open"], "open device `name`", self.command_device_open, AccessLevel.DEVICE, params="name")
         self.add_command(["refresh", "r"], "refresh list of devices", self.command_refresh, AccessLevel.ADMIN)
         self.add_command(["status", "s"], "get status of device `name`", self.command_device_status, AccessLevel.DEVICE, params="name")
+        self.add_command(["timezone", "tz"], "get timezone or set it to `value`", self.command_timezone, AccessLevel.SECURITY, params="value")
         self.add_command(["unlock"], "lock device `name`", self.command_device_unlock, AccessLevel.SECURITY, params="name")
         self.add_command(["users", "u"], "get users", self.command_list_users, AccessLevel.ADMIN)
 
