@@ -237,6 +237,8 @@ class Homebot:
         return self.get_user(update).has_access(access_level)
 
     def get_user_info(self, update: Update) -> str:
+        if not update.effective_user:
+            return "None"  # e.g., channel_post
         return f"UserId {update.effective_user.id} ({update.effective_user.name})"
 
     def log_command(self, update: Update, command: str, device: Device = None) -> None:
@@ -318,29 +320,31 @@ class Homebot:
             else:
                 self.send_text(update, context, "No timezone set for current user. Using UTC.")
 
+    def command_device_last_event(self, update: Update, context: CallbackContext) -> None:
+        self.get_device_events(update, context, True)
+
     def command_device_events(self, update: Update, context: CallbackContext) -> None:
+        self.get_device_events(update, context, False)
+
+    def get_device_events(self, update: Update, context: CallbackContext, last_only: bool) -> None:
         self.request_access(update, context, AccessLevel.SECURITY)
         device = self.get_device(update, context)
         if device:
             self.log_command(update, "/events", device)
             events = self.hubitat.api.get_device_events(device.id)
 
+            if len(events) == 0:
+                self.send_md(update, context, f"No events for device *{device.label}*")
+                return
+
             tz = self.get_timezone(context)
-
-            def row(date, name, value) -> str:
-                return f"{date :20}|{name :12}|{value:10}"
-
             tz_text = "UTC"
 
             if tz:
                 tz_text = self.markdown_escape(tz)
                 tz = pytz.timezone(tz)
 
-            text = [f"Events for device *{device.label}*, timezone {tz_text}:", "```", row("date", "name", "value")]
-
-            for event in events:
-                event_date: datetime = event["date"]
-
+            def convert_date(event_date: str) -> str:
                 # event_date is a string in ISO 8601 format
                 # e.g. 2022-02-03T04:02:32+0000
                 # start by transforming into a real datetime
@@ -350,7 +354,21 @@ class Homebot:
                     event_date = event_date.astimezone(tz)
                 # and ... convert back to string.
                 event_date = event_date.strftime("%Y-%m-%d %H:%M:%S")
+                return event_date
 
+            if last_only:
+                event = events[0]
+                text = [f"Last event for device *{device.label}*:", f"Time: `{convert_date(event['date'])}` ({tz_text})", f"Name: {event['name']}", f"Value: {self.markdown_escape(event['value'])}"]
+                self.send_md(update, context, text)
+                return
+
+            def row(date, name, value) -> str:
+                return f"{date :20}|{name :12}|{value:10}"
+
+            text = [f"Events for device *{device.label}*, timezone {tz_text}:", "```", row("date", "name", "value")]
+
+            for event in events:
+                event_date = convert_date(event["date"])
                 text.append(row(event_date, event["name"], event["value"]))
 
             text.append("```")
@@ -516,6 +534,7 @@ class Homebot:
         self.add_command(["help", "h"], "display help", self.command_help, AccessLevel.NONE)  # sadly '/?' is not a valid command
         self.add_command(["arm", "a"], "get hsm arm status or arm to `value`", self.command_hsm, AccessLevel.SECURITY, "value")
         self.add_command(["info", "i"], "get info of device `name`", self.command_device_info, AccessLevel.ADMIN, params="name")
+        self.add_command(["lastevent", "le"], "get the last event for device `name`", self.command_device_last_event, AccessLevel.SECURITY, params="name")
         self.add_command(["list", "l"], "get devices, optionally filtering name by `filter`", self.command_list_devices, AccessLevel.DEVICE, params="filter")
         self.add_command(["lock"], "lock device `name`", self.command_device_lock, AccessLevel.SECURITY, params="name")
         self.add_command(["mode", "m"], "lists modes or set mode to `value`", self.command_mode, AccessLevel.SECURITY, params="value")
