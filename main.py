@@ -326,7 +326,7 @@ class Homebot:
     def command_device_events(self, update: Update, context: CallbackContext) -> None:
         self.get_device_events(update, context, False)
 
-    def get_device_events(self, update: Update, context: CallbackContext, is_last: bool) -> None:
+    def get_device_events(self, update: Update, context: CallbackContext, last_only: bool) -> None:
         self.request_access(update, context, AccessLevel.SECURITY)
         device = self.get_device(update, context)
         if device:
@@ -356,7 +356,7 @@ class Homebot:
                 event_date = event_date.strftime("%Y-%m-%d %H:%M:%S")
                 return event_date
 
-            if is_last:
+            if last_only:
                 event = events[0]
                 text = [f"Last event for device *{device.label}*:", f"Time: `{convert_date(event['date'])}` ({tz_text})", f"Name: {event['name']}", f"Value: {self.markdown_escape(event['value'])}"]
                 self.send_md(update, context, text)
@@ -529,7 +529,7 @@ class Homebot:
         self.add_command(["close"], "close device `name`", self.command_device_close, AccessLevel.DEVICE, params="name")
         self.add_command(["commands", "c"], "list supported commands for device `name`", self.command_device_commands, AccessLevel.DEVICE, params="name")
         self.add_command(["dim", "d"], "dim device `name` by `number` percent", self.command_device_dim, AccessLevel.DEVICE, params="number name")
-        self.add_command(["events", "e"], "get last 20 events for device `name`", self.command_device_events, AccessLevel.SECURITY, params="name")
+        self.add_command(["events", "e"], "get recent events for device `name`", self.command_device_events, AccessLevel.SECURITY, params="name")
         self.add_command(["groups", "g"], "get device groups, optionally filtering name by `filter`", self.command_list_groups, AccessLevel.ADMIN, params="filter")
         self.add_command(["help", "h"], "display help", self.command_help, AccessLevel.NONE)  # sadly '/?' is not a valid command
         self.add_command(["arm", "a"], "get hsm arm status or arm to `value`", self.command_hsm, AccessLevel.SECURITY, "value")
