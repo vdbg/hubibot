@@ -100,7 +100,7 @@ class DeviceGroup:
 
             device.supported_commands = supported_commands
 
-            return len(supported_commands) > 0
+            return True
 
         if self._devices is None:
             logging.debug(f"Refreshing device cache for device group '{self.name}'.")
@@ -268,11 +268,14 @@ class Homebot:
             self.send_text(update, context, message.format(device.label))
 
     def command_device_info(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.ADMIN)
+        self.request_access(update, context, AccessLevel.DEVICE)
         device = self.get_device(update, context)
         if device:
             info = self.hubitat.api.get_device_info(device.id)
             self.log_command(update, "/info", device)
+            info["supported_commands"] = ", ".join(device.supported_commands)
+            if not self.has_access(update, AccessLevel.ADMIN):
+                info = {"label": info["label"], "supported_commands": info["supported_commands"]}
             self.send_md(update, context, [f"*{k}*: `{v}`" for k, v in info.items()])
 
     def command_refresh(self, update: Update, context: CallbackContext) -> None:
@@ -511,15 +514,6 @@ class Homebot:
             state = self.hubitat.api._request_sender("hsm").json()
             self.send_text(update, context, f"State: {state['hsm']}")
 
-    def command_device_commands(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.DEVICE)
-        device = self.get_device(update, context)
-        supported_commands = device.supported_commands
-        if supported_commands:
-            self.send_md(update, context, f"Supported commands for *{device.label}*: {', '.join(supported_commands)}.")
-        else:
-            self.send_md(update, context, f"No supported commands for *{device.label}*.")
-
     def configure(self) -> None:
         dispatcher = self.telegram.dispatcher
 
@@ -527,13 +521,12 @@ class Homebot:
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
         self.add_command(["close"], "close device `name`", self.command_device_close, AccessLevel.DEVICE, params="name")
-        self.add_command(["commands", "c"], "list supported commands for device `name`", self.command_device_commands, AccessLevel.DEVICE, params="name")
         self.add_command(["dim", "d"], "dim device `name` by `number` percent", self.command_device_dim, AccessLevel.DEVICE, params="number name")
         self.add_command(["events", "e"], "get recent events for device `name`", self.command_device_events, AccessLevel.SECURITY, params="name")
         self.add_command(["groups", "g"], "get device groups, optionally filtering name by `filter`", self.command_list_groups, AccessLevel.ADMIN, params="filter")
         self.add_command(["help", "h"], "display help", self.command_help, AccessLevel.NONE)  # sadly '/?' is not a valid command
         self.add_command(["arm", "a"], "get hsm arm status or arm to `value`", self.command_hsm, AccessLevel.SECURITY, "value")
-        self.add_command(["info", "i"], "get info of device `name`", self.command_device_info, AccessLevel.ADMIN, params="name")
+        self.add_command(["info", "i"], "get info of device `name`", self.command_device_info, AccessLevel.DEVICE, params="name")
         self.add_command(["lastevent", "le"], "get the last event for device `name`", self.command_device_last_event, AccessLevel.SECURITY, params="name")
         self.add_command(["list", "l"], "get devices, optionally filtering name by `filter`", self.command_list_devices, AccessLevel.DEVICE, params="filter")
         self.add_command(["lock"], "lock device `name`", self.command_device_lock, AccessLevel.SECURITY, params="name")
