@@ -35,9 +35,9 @@ Device groups represent collection of Hubitat devices that can be accessed by us
 
 User groups represent collection of Telegram users that have access to device groups. User groups can contain any number of Telegram user ids (those with no user ids are ignored) and reference any number of device groups. User groups with an `access_level` set to:
 * `NONE`: cannot use any commands. Useful to disable a user group.
-* `DEVICE`: can use device commands e.g., `/list`, `/on`, `/off`, `/open`, `/close`, `/dim`, `/status`, `/commands`.
+* `DEVICE`: can use device commands e.g., `/list`, `/on`, `/off`, `/open`, `/close`, `/dim`, `/status`, `/info`.
 * `SECURITY`: can use the same commands as `access_level: DEVICE`, and also act on locks with `/lock` & `/unlock` commands, the `/arm` command for [Hubitat Safety Monitor](https://docs.hubitat.com/index.php?title=Hubitat%C2%AE_Safety_Monitor_Interface), the `/mode` command to view and change the mode, the `/events` command to see a device's history, and the `/tz` command to change the timezone for `/events` and `/lastevent`.
-* `ADMIN`: can use the same commands as `access_level: SECURITY`, and also admin commands e.g., `/users`, `/groups`, `/info`, `refresh`. In addition some commands have more detailed output (e.g., `/list`, `/status`).
+* `ADMIN`: can use the same commands as `access_level: SECURITY`, and also admin commands e.g., `/users`, `/groups`, `/refresh`. In addition some commands have more detailed output (e.g., `/list`, `/status`).
 
 A user can only belong to one user group, but a device can belong to multiple device groups and a device group can be referenced by multiple user groups.
 
