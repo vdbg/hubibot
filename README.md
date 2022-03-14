@@ -19,8 +19,7 @@ Notable pros compared to alternatives are fine-grained access control and not re
 ## Pre-requisites
 
 * A [Hubitat](https://hubitat.com/) hub
-* A device capable of running Python scripts on the same LAN as the hub, e.g. [Rasbpian](https://www.raspbian.org/) or Windows
-* [Python](https://www.python.org/) 3.7 (or later) and pip3 installed on that device
+* A device capable of running either Docker containers or [Python](https://www.python.org/) (3.7 or later with pip3) that is on the same LAN as the hub e.g., [Rasbpian](https://www.raspbian.org/) or Windows
 * [Maker API](https://docs.hubitat.com/index.php?title=Maker_API) app installed and configured in Hubitat
 * A [Telegram](https://telegram.org/) account to interact with the bot
 * A Telegram [bot](https://core.telegram.org/bots). Use [BotFather](https://core.telegram.org/bots#6-botfather) to create one
@@ -41,7 +40,22 @@ User groups represent collection of Telegram users that have access to device gr
 
 A user can only belong to one user group, but a device can belong to multiple device groups and a device group can be referenced by multiple user groups.
 
-## Setup
+## Running
+
+### As a Docker container
+
+To build and run locally,
+
+* `sudo docker build -t hubibot FolderOfGitClone`
+* Copy `template.config.yaml` to `config.yaml` and edit `config.yaml` by following the instructions in the file
+* Test run (assuming `config.yaml` was copied in FolderOfGitClone) : `sudo docker run -v /path/to/FolderOfGitClone/config.yaml:/app/config.yaml hubibot`
+  This will display logging on the command window allowing for rapid troubleshooting.
+* Recommended run: `sudo docker run -d --name hubitat_robot -v /path/to/FolderOfGitClone/config.yaml:/app/config.yaml --restart=always --memory=100m hubibot`
+* To see logs: `sudo docker container logs -f hubibot`
+
+### Directly on the device
+
+To install:
 
 * `git clone` the repo or download the source code
 * cd into the directory containing the source code
@@ -49,7 +63,7 @@ A user can only belong to one user group, but a device can belong to multiple de
 * Modify `config.yaml` by following the instructions in the file
 * Run `pip3 install -r requirements.txt` 
 
-## Running
+To run:
 
 Interactive mode: `python3 main.py`
 
@@ -57,9 +71,7 @@ Shorter: `.\main.py` (Windows) or `./main.py` (any other OS).
 
 As a background process (on non-Windows OS): `python3 main.py > log.txt 2>&1 &`
 
-## Exiting
-
-`Ctrl-C` if running in interactive mode, `kill` the process otherwise.
+To exit: `Ctrl-C` if running in interactive mode, `kill` the process otherwise.
 
 ## Using the bot
 
