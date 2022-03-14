@@ -50,7 +50,7 @@ To build and run locally,
 * Copy `template.config.yaml` to `config.yaml` and edit `config.yaml` by following the instructions in the file
 * Test run (assuming `config.yaml` was copied in FolderOfGitClone) : `sudo docker run -v /path/to/FolderOfGitClone/config.yaml:/app/config.yaml hubibot`
   This will display logging on the command window allowing for rapid troubleshooting.
-* Recommended run: `sudo docker run -d --name hubitat_robot -v /path/to/FolderOfGitClone/config.yaml:/app/config.yaml --restart=always --memory=100m hubibot`
+* Recommended run: `sudo docker run -d --name hubibot -v /path/to/FolderOfGitClone/config.yaml:/app/config.yaml --restart=always --memory=100m hubibot`
 * To see logs: `sudo docker container logs -f hubibot`
 
 ### Directly on the device
