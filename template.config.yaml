@@ -28,6 +28,9 @@ hubitat:
   # captured string. In the example given below, if performing "/on Office" and no device called "Office" exists, the robot will
   # look for a device named "Office Light"
   device_aliases: [ [ "^(.*)$", "\\1 Light" ], [ "^(.*) Closet$", "\\1 Walking Closet Light" ], [ "^hw$", "Hot Water" ] ]
+  # Optional descriptions for devices; description is returned by the /list & /info commands
+  device_descriptions:
+    12345: "description for device id 12345"
   device_groups:                # See README.md for explanation on device groups
     all:                        # Names are free-form and referenced by telegram:user_groups:<something>:device_groups
       allowed_device_ids:  [ ]  # List of Hubitat device ids to allow. If empty, all are allowed unless explicitly rejected 

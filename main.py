@@ -66,6 +66,7 @@ class Device:
         self.label: str = device["label"]
         self.type: str = device["type"]
         self.commands: list[str] = device["commands"]
+        self.description: str = None
         self.supported_commands: list[str] = []
 
 
@@ -104,17 +105,11 @@ class DeviceGroup:
 
         if self._devices is None:
             logging.debug(f"Refreshing device cache for device group '{self.name}'.")
-            self._devices = {self.case_hack(device.label): device for device in self.hubitat.get_all_devices() if is_allowed_device(device)}
+            self._devices = {self.hubitat.case_hack(device.label): device for device in self.hubitat.get_all_devices() if is_allowed_device(device)}
         return self._devices
 
-    def case_hack(self, name: str) -> str:
-        # Gross Hack (tm) because Python doesn't support case comparers for dictionaries
-        if self.hubitat.case_insensitive:
-            name = name.lower()
-        return name
-
     def get_device(self, name: str) -> dict[str, Device]:
-        return self.get_devices().get(self.case_hack(name), None)
+        return self.get_devices().get(self.hubitat.case_hack(name), None)
 
 
 class Hubitat:
@@ -124,8 +119,9 @@ class Hubitat:
         self.api = MakerAPI(conf["token"], hub)
         self.device_groups = {}
         self._devices_cache = None
-        self.case_insensitive = bool(conf["case_insensitive"])
-        self.device_aliases = conf["device_aliases"]
+        self.case_insensitive: bool = bool(conf["case_insensitive"])
+        self.device_aliases: list(list(str)) = conf["device_aliases"]
+        self._device_descriptions: dict[int, str] = conf["device_descriptions"]
         self.he_to_bot_commands = {"on": None, "off": None, "setLevel": "/dim", "open": None, "close": None, "lock": None, "unlock": None}
         # because Python doesn't support case insensitive searches
         # and Hubitats requires exact case, we create a dict{lowercase,requestedcase}
@@ -134,6 +130,12 @@ class Hubitat:
             self.device_groups[name] = DeviceGroup(name, data, self)
         if not self.device_groups:
             raise Exception("At least one device group must be specified in the config file.")
+
+    def case_hack(self, name: str) -> str:
+        # Gross Hack (tm) because Python doesn't support case comparers for dictionaries
+        if self.case_insensitive:
+            name = name.lower()
+        return name
 
     def refresh_devices(self) -> None:
         self._devices_cache = None
@@ -150,6 +152,9 @@ class Hubitat:
         if self._devices_cache is None:
             logging.info("Refreshing all devices cache")
             self._devices_cache = [Device(x) for x in self.api.list_devices_detailed()]
+
+            for device in self._devices_cache:
+                device.description = self._device_descriptions.get(device.id)
 
         return self._devices_cache
 
@@ -193,8 +198,7 @@ class Homebot:
         self.list_commands[access_level].append(helptxt)
 
     def get_single_arg(self, context: CallbackContext) -> str:
-        # lower because Python doesn't support case insensitive searches
-        return " ".join(context.args).lower()
+        return self.hubitat.case_hack(" ".join(context.args))
 
     def get_device(self, update: Update, context: CallbackContext) -> Device:
         device_name = self.get_single_arg(context)
@@ -208,7 +212,7 @@ class Homebot:
             return device
 
         for alias in self.hubitat.device_aliases:
-            pattern = alias[0]
+            pattern = self.hubitat.case_hack(alias[0])
             sub = alias[1]
             new_device_name = re.sub(pattern, sub, device_name)
             logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
@@ -276,6 +280,8 @@ class Homebot:
             info["supported_commands"] = ", ".join(device.supported_commands)
             if not self.has_access(update, AccessLevel.ADMIN):
                 info = {"label": info["label"], "supported_commands": info["supported_commands"]}
+            if device.description:
+                info["description"] = device.description
             self.send_md(update, context, [f"*{k}*: `{v}`" for k, v in info.items()])
 
     def command_refresh(self, update: Update, context: CallbackContext) -> None:
@@ -385,15 +391,22 @@ class Homebot:
     def list_devices(self, update: Update, context: CallbackContext, devices: dict[str, Device], title: str):
         self.request_access(update, context, AccessLevel.DEVICE)
         devices_text = []
+
+        def get_description(device: Device) -> str:
+            if device.description:
+                return ": " + device.description
+            else:
+                return ""
+
         if title:
             devices_text.append(title)
         if not devices:
             devices_text.append("No devices.")
         else:
             if self.has_access(update, AccessLevel.ADMIN):
-                devices_text += [f"{info.label}: `{info.id}` ({info.type})" for name, info in sorted(devices.items())]
+                devices_text += [f"{info.label}: `{info.id}` ({info.type}) {info.description or ''}" for name, info in sorted(devices.items())]
             else:
-                devices_text += [info.label for name, info in sorted(devices.items())]
+                devices_text += [f"{info.label} {get_description(info)}" for name, info in sorted(devices.items())]
         self.send_md(update, context, devices_text)
 
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
@@ -403,8 +416,7 @@ class Homebot:
         devices = {}
         for device_group in device_groups:
             for device in device_group.get_devices().values():
-                # lower(): Hack because Python doesn't support case-insensitive searches
-                if device_filter in device.label.lower():
+                if device_filter in self.hubitat.case_hack(device.label):
                     devices[device.label] = device
 
         self.list_devices(update, context, devices, None)
@@ -414,8 +426,7 @@ class Homebot:
 
         group_filter = self.get_single_arg(context)
         for group in self.hubitat.get_device_groups():
-            # lower(): Hack because Python doesn't support case-insensitive searches
-            if group_filter in group.name.lower():
+            if group_filter in self.hubitat.case_hack(group.name):
                 self.list_devices(update, context, group.get_devices(), f"Devices in *{group.name}*:")
 
     def command_help(self, update: Update, context: CallbackContext) -> None:
