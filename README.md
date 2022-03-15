@@ -1,3 +1,5 @@
+[![GitHub issues](https://img.shields.io/github/issues/vdbg/hubibot.svg)](https://github.com/vdbg/hubibot/issues)
+[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/vdbg/hubibot/main/LICENSE)
 
 # HubiBot: Telegram robot for Hubitat
 
@@ -25,7 +27,7 @@ Notable pros compared to alternatives are fine-grained access control and not re
 ## Pre-requisites
 
 * A [Hubitat](https://hubitat.com/) hub
-* A device capable of running either Docker containers or [Python](https://www.python.org/) (3.7 or later with pip3) that is on the same LAN as the hub e.g., [Rasbpian](https://www.raspbian.org/) or Windows
+* A device, capable of running either Docker containers or Python, that is on the same LAN as the hub e.g., [Rasbpian](https://www.raspbian.org/) or Windows
 * [Maker API](https://docs.hubitat.com/index.php?title=Maker_API) app installed and configured in Hubitat
 * A [Telegram](https://telegram.org/) account to interact with the bot
 * A Telegram [bot](https://core.telegram.org/bots). Use [BotFather](https://core.telegram.org/bots#6-botfather) to create one
