@@ -8,8 +8,11 @@ Notable pros compared to alternatives are fine-grained access control and not re
 ## Highlights
 
 * Can issue commands to Hubitat devices by talking to a Telegram robot, e.g., `/on Office Light` to turn on the device named "Office Light".
-* One Telegram robot can expose different sets of devices to different people, e.g., different devices available for person managing Hubitat, family members and friends.
+* Can get the status, capabilities and history of a device.
 * Can give multiple names to devices, e.g., `/on hw` doing the same as `/on Hot Water`.
+* Can query and change Hubitat's mode or security monitor state.
+* Can expose different sets of devices and permissions to different groups of people, e.g., person managing Hubitat, family members and friends.
+
 
 ## Example of interaction
 
@@ -27,6 +30,60 @@ Notable pros compared to alternatives are fine-grained access control and not re
 * A [Telegram](https://telegram.org/) account to interact with the bot
 * A Telegram [bot](https://core.telegram.org/bots). Use [BotFather](https://core.telegram.org/bots#6-botfather) to create one
 
+## Installing
+
+Choose one of these 3 methods.
+
+### Using pre-built Docker image
+
+1. `touch config.yaml`
+2. This will fail due to malformed config.yaml. That's intentional :)  
+   ``sudo docker run --name my_hubibot -v "`pwd`/config.yaml:/app/config.yaml" vdbg/hubibot``
+3. `sudo docker cp my_hubibot:/app/template.config.yaml config.yaml`
+4. Edit `config.yaml` by following the instructions in the file
+5. `sudo docker start my_hubibot -i`  
+  This will display logging on the command window allowing for rapid troubleshooting. `Ctrl-C` to stop the container if `config.yaml` is changed
+7. When done testing the config:
+  * `sudo docker container rm my_hubibot`
+  * ``sudo docker run -d --name my_hubibot -v "`pwd`/config.yaml:/app/config.yaml" --restart=always --memory=100m vdbg/hubibot``
+  * To see logs: `sudo docker container logs -f my_hubibot`
+
+### Using Docker image built from source
+
+1. `git clone https://github.com/vdbg/hubibot.git`
+2. `sudo docker build -t hubibot_image hubibot`
+3. `cd hubibot`
+4. `cp template.config.yaml config.yaml` 
+5. Edit `config.yaml` by following the instructions in the file
+6. Test run: ``sudo docker run --name my_hubibot -v "`pwd`/config.yaml:/app/config.yaml" hubibot_image``  
+   This will display logging on the command window allowing for rapid troubleshooting. `Ctrl-C` to stop the container if `config.yaml` is changed
+7. If container needs to be restarted for testing: `sudo docker start my_hubibot -i` 
+8. When done testing the config:
+  * `sudo docker container rm my_hubibot`
+  * ``sudo docker run -d --name my_hubibot -v "`pwd`/config.yaml:/app/config.yaml" --restart=always --memory=100m hubibot_image``
+  * To see logs: `sudo docker container logs -f my_hubibot`
+
+### Running directly on the device
+
+[Python](https://www.python.org/) 3.7 or later with pip3 required.
+
+To install:
+
+1. `git clone https://github.com/vdbg/hubibot.git`
+2. `cd hubibot`
+3. `cp template.config.yaml config.yaml`
+4. Edit `config.yaml` by following the instructions in the file
+5. `pip3 install -r requirements.txt` 
+6. Run the program:
+  * Interactive mode: `python3 main.py`
+  * Shorter: `.\main.py` (Windows) or `./main.py` (any other OS).
+  * As a background process (on non-Windows OS): `python3 main.py > log.txt 2>&1 &`
+7. To exit: `Ctrl-C` if running in interactive mode, `kill` the process otherwise.
+
+## Using the bot
+
+From your Telegram account, write `/h` to the bot to get the list of available commands.
+
 ## Understanding user and device groups
 
 User and device groups allow for fine-grained access control, for example giving access to different devices to parents, kids, friends and neighbors.
@@ -42,43 +99,6 @@ User groups represent collection of Telegram users that have access to device gr
 * `ADMIN`: can use the same commands as `access_level: SECURITY`, and also admin commands e.g., `/users`, `/groups`, `/refresh`. In addition some commands have more detailed output (e.g., `/list`, `/status`).
 
 A user can only belong to one user group, but a device can belong to multiple device groups and a device group can be referenced by multiple user groups.
-
-## Running
-
-### As a Docker container
-
-To build and run locally,
-
-* `sudo docker build -t hubibot FolderOfGitClone`
-* Copy `template.config.yaml` to `config.yaml` and edit `config.yaml` by following the instructions in the file
-* Test run (assuming `config.yaml` was copied in FolderOfGitClone) : `sudo docker run -v /path/to/FolderOfGitClone/config.yaml:/app/config.yaml hubibot`
-  This will display logging on the command window allowing for rapid troubleshooting.
-* Recommended run: `sudo docker run -d --name hubibot -v /path/to/FolderOfGitClone/config.yaml:/app/config.yaml --restart=always --memory=100m hubibot`
-* To see logs: `sudo docker container logs -f hubibot`
-
-### Directly on the device
-
-To install:
-
-* `git clone` the repo or download the source code
-* cd into the directory containing the source code
-* Copy the `template.config.yaml` file to `config.yaml`
-* Modify `config.yaml` by following the instructions in the file
-* Run `pip3 install -r requirements.txt` 
-
-To run:
-
-Interactive mode: `python3 main.py`
-
-Shorter: `.\main.py` (Windows) or `./main.py` (any other OS).
-
-As a background process (on non-Windows OS): `python3 main.py > log.txt 2>&1 &`
-
-To exit: `Ctrl-C` if running in interactive mode, `kill` the process otherwise.
-
-## Using the bot
-
-From your Telegram account, write `/h` to the bot to get the list of available commands.
 
 ## Troubleshooting
 
