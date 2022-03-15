@@ -1,7 +1,10 @@
-FROM python:3.7
+# Alpine for smaller size
+FROM python:3.9-alpine
 
 # Create a system account hubibot.hubibot
-RUN groupadd -r hubibot && useradd -r -m -g hubibot hubibot
+RUN addgroup -S hubibot && adduser -S hubibot -G hubibot
+# Non-alpine equivalent of above:
+#RUN groupadd -r hubibot && useradd -r -m -g hubibot hubibot
 
 USER hubibot
 
@@ -11,7 +14,7 @@ COPY requirements.txt     /app
 COPY main.py              /app
 COPY template.config.yaml /app
 
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r ./requirements.txt --no-warn-script-location 
 
-RUN pip3 install -r ./requirements.txt --no-warn-script-location
-
-ENTRYPOINT python3 main.py
+ENTRYPOINT python main.py
