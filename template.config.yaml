@@ -44,3 +44,4 @@ hubitat:
 
 main:
   logverbosity: WARNING  # possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
