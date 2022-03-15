@@ -13,7 +13,10 @@ Notable pros compared to alternatives are fine-grained access control and not re
 
 ## Example of interaction
 
-![d2e001b279de98f9960771b9f6e0581006afd667](https://user-images.githubusercontent.com/1063918/147838147-e93848b3-9ac0-4a6a-9072-dce10639d008.png)
+
+<img width="479" alt="hubi1" src="https://user-images.githubusercontent.com/1063918/158442236-b4811fc1-a2bc-486b-adf2-3bf8e02ab591.PNG">
+
+<img width="475" alt="hubi2" src="https://user-images.githubusercontent.com/1063918/158442306-eaec3b2b-009d-49d3-bc06-b8652148f80d.PNG">
 
 
 ## Pre-requisites
