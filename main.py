@@ -12,10 +12,11 @@ import logging
 from pathlib import Path
 import pytz  # timezones
 import re
+import threading
 
 # https://github.com/python-telegram-bot/python-telegram-bot
-from telegram import Update, ParseMode
-from telegram.ext import CallbackContext, CommandHandler, MessageHandler, Filters, Updater
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ParseMode
+from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler, MessageHandler, Filters, Updater
 from typing import Union
 import yaml
 
@@ -525,6 +526,42 @@ class Homebot:
             state = self.hubitat.api._request_sender("hsm").json()
             self.send_text(update, context, f"State: {state['hsm']}")
 
+    def command_exit(self, update: Update, context: CallbackContext) -> None:
+        self.request_access(update, context, AccessLevel.SECURITY)
+        keyboard = [
+            [
+                InlineKeyboardButton("Yes", callback_data='Exit_Yes'),
+                InlineKeyboardButton("No", callback_data='Exit_No'),
+            ],
+            [InlineKeyboardButton("More information", callback_data='Exit_Help')],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        update.message.reply_text('Are you sure you want to exit the bot?', reply_markup=reply_markup)
+
+    def shutdown_hack(self):
+        # this needs to be on a separate thread because otherwise updater.stop() deadlocks
+        self.telegram.updater.stop()
+        self.telegram.updater.is_idle = False
+
+    def button_press(self, update: Update, context: CallbackContext) -> None:
+        self.request_access(update, context, AccessLevel.SECURITY)
+
+        query = update.callback_query
+        query.answer()
+
+        if query.data == "Exit_Help":
+            query.edit_message_text(text="This will terminate the bot process. To autorestart, use forever if started from command line or '--restart=always' if started in a Docker container.")
+            return
+
+        if query.data == "Exit_Yes":
+            query.edit_message_text(text="Terminating the bot.")
+            threading.Thread(target=self.shutdown_hack).start()
+            return
+
+        if query.data == "Exit_No":
+            query.edit_message_text(text="Not terminating the bot.")
+            return
+
     def configure(self) -> None:
         dispatcher = self.telegram.dispatcher
 
@@ -532,8 +569,9 @@ class Homebot:
         dispatcher.add_handler(MessageHandler(~Filters.user(self.telegram.users.keys()), self.command_unknown_user))
 
         self.add_command(["close"], "close device `name`", self.command_device_close, AccessLevel.DEVICE, params="name")
-        self.add_command(["dim", "d"], "dim device `name` by `number` percent", self.command_device_dim, AccessLevel.DEVICE, params="number name")
+        self.add_command(["dim", "d", "level"], "set device `name` to `number` percent", self.command_device_dim, AccessLevel.DEVICE, params="number name")
         self.add_command(["events", "e"], "get recent events for device `name`", self.command_device_events, AccessLevel.SECURITY, params="name")
+        self.add_command(["exit", "x"], "terminates the robot", self.command_exit, AccessLevel.ADMIN)
         self.add_command(["groups", "g"], "get device groups, optionally filtering name by `filter`", self.command_list_groups, AccessLevel.ADMIN, params="filter")
         self.add_command(["help", "h"], "display help", self.command_help, AccessLevel.NONE)  # sadly '/?' is not a valid command
         self.add_command(["arm", "a"], "get hsm arm status or arm to `value`", self.command_hsm, AccessLevel.SECURITY, "value")
@@ -553,6 +591,7 @@ class Homebot:
 
         dispatcher.add_handler(MessageHandler(Filters.command, self.command_unknown))
         dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), self.command_text))
+        dispatcher.add_handler(CallbackQueryHandler(self.button_press))
 
         self.list_commands[AccessLevel.DEVICE] += self.list_commands[AccessLevel.NONE]
         self.list_commands[AccessLevel.SECURITY] += self.list_commands[AccessLevel.DEVICE]
