@@ -1,8 +1,6 @@
 #!/bin/python3
 
-from __future__ import annotations  # because raspberry pi is on Python 3.7 and annotations are 3.9
-
-
+from aliases import Aliases
 import datetime
 from enum import IntEnum
 
@@ -121,16 +119,26 @@ class Hubitat:
         self.device_groups = {}
         self._devices_cache = None
         self.case_insensitive: bool = bool(conf["case_insensitive"])
-        self.device_aliases: list(list(str)) = conf["device_aliases"]
+        self._aliases = Aliases(conf["aliases"], self.case_insensitive)
         self._device_descriptions: dict[int, str] = conf["device_descriptions"]
         self.he_to_bot_commands = {"on": None, "off": None, "setLevel": "/dim", "open": None, "close": None, "lock": None, "unlock": None}
         # because Python doesn't support case insensitive searches
         # and Hubitats requires exact case, we create a dict{lowercase,requestedcase}
-        self.hsm_arm = {x.lower(): x for x in conf["hsm_arm_values"]}
+        self.hsm_arm: dict[str, str] = {x.lower(): x for x in conf["hsm_arm_values"]}
         for name, data in conf["device_groups"].items():
             self.device_groups[name] = DeviceGroup(name, data, self)
         if not self.device_groups:
             raise Exception("At least one device group must be specified in the config file.")
+
+    def resolve_device(self, name: str, device_groups: list) -> Device:
+        return self._aliases.resolve("device", name, lambda name: self.get_device(name, device_groups))
+
+    def resolve_hsm(self, name: str) -> str:
+        return self._aliases.resolve("hsm", name, lambda name: self.hsm_arm.get(name, None))
+
+    def resolve_mode(self, name: str, modes) -> dict[str, str]:
+        modes_dict = {mode["name"].lower(): mode for mode in modes}
+        return self._aliases.resolve("mode", name, lambda name: modes_dict.get(name, None))
 
     def case_hack(self, name: str) -> str:
         # Gross Hack (tm) because Python doesn't support case comparers for dictionaries
@@ -207,19 +215,10 @@ class Homebot:
             self.send_text(update, context, "Device name not specified.")
             return None
 
-        device_groups = self.get_user(update).device_groups
-        device = self.hubitat.get_device(device_name, device_groups)
+        device = self.hubitat.resolve_device(device_name, self.get_user(update).device_groups)
+
         if device:
             return device
-
-        for alias in self.hubitat.device_aliases:
-            pattern = self.hubitat.case_hack(alias[0])
-            sub = alias[1]
-            new_device_name = re.sub(pattern, sub, device_name)
-            logging.debug(f"Trying regex s/{pattern}/{sub}/ => {new_device_name}")
-            device = self.hubitat.get_device(new_device_name, device_groups)
-            if device:
-                return device
 
         self.send_text(update, context, "Device not found. '/l' to get list of devices.")
         return None
@@ -493,12 +492,12 @@ class Homebot:
         if len(context.args) > 0:
             # mode change requested
             mode_requested = self.get_single_arg(context)
-            for mode in modes:
-                if mode["name"].lower() == mode_requested:
-                    self.log_command(update, f"/mode {mode['name']}")
-                    self.hubitat.api._request_sender(f"modes/{mode['id']}")
-                    self.send_text(update, context, "Mode change completed.")
-                    return
+            mode = self.hubitat.resolve_mode(mode_requested, modes)
+            if mode:
+                self.log_command(update, f"/mode {mode['name']}")
+                self.hubitat.api._request_sender(f"modes/{mode['id']}")
+                self.send_text(update, context, f"Mode changed to {mode['name']}.")
+                return
             self.send_text(update, context, "Unknown mode.")
 
         text = []
@@ -514,12 +513,11 @@ class Homebot:
         self.request_access(update, context, AccessLevel.SECURITY)
         if len(context.args) > 0:
             # mode change requested
-            hsm_requested = self.get_single_arg(context)
-            if hsm_requested in self.hubitat.hsm_arm:
-                hsm = self.hubitat.hsm_arm[hsm_requested]
+            hsm = self.hubitat.resolve_hsm(self.get_single_arg(context))
+            if hsm:
                 self.log_command(update, f"/arm {hsm}")
                 self.hubitat.api._request_sender(f"hsm/{hsm}")
-                self.send_text(update, context, "Arm request sent.")
+                self.send_text(update, context, f"Arm request {hsm} sent.")
             else:
                 self.send_text(update, context, f"Invalid arm state. Supported values: {', '.join(self.hubitat.hsm_arm.values())}.")
         else:
@@ -586,7 +584,7 @@ class Homebot:
         self.add_command(["refresh", "r"], "refresh list of devices", self.command_refresh, AccessLevel.ADMIN)
         self.add_command(["status", "s"], "get status of device `name`", self.command_device_status, AccessLevel.DEVICE, params="name")
         self.add_command(["timezone", "tz"], "get timezone or set it to `value`", self.command_timezone, AccessLevel.SECURITY, params="value")
-        self.add_command(["unlock"], "lock device `name`", self.command_device_unlock, AccessLevel.SECURITY, params="name")
+        self.add_command(["unlock"], "unlock device `name`", self.command_device_unlock, AccessLevel.SECURITY, params="name")
         self.add_command(["users", "u"], "get users", self.command_list_users, AccessLevel.ADMIN)
 
         dispatcher.add_handler(MessageHandler(Filters.command, self.command_unknown))
