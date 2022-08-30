@@ -27,7 +27,7 @@ Notable pros compared to alternatives are fine-grained access control and not re
 ## Pre-requisites
 
 * A [Hubitat](https://hubitat.com/) hub
-* A device, capable of running either Docker containers or Python, that is on the same LAN as the hub e.g., [Rasbpian](https://www.raspbian.org/) or Windows
+* A device, capable of running either Docker containers or Python, that is on the same LAN as the hub e.g., [Raspbian](https://www.raspbian.org/) or Windows
 * [Maker API](https://docs.hubitat.com/index.php?title=Maker_API) app installed and configured in Hubitat
 * A [Telegram](https://telegram.org/) account to interact with the bot
 * A Telegram [bot](https://core.telegram.org/bots). Use [BotFather](https://core.telegram.org/bots#6-botfather) to create one
@@ -39,11 +39,11 @@ Choose one of these 3 methods.
 ### Using pre-built Docker image
 
 1. `touch config.yaml`
-2. This will fail due to malformed config.yaml. That's intentional :)  
+2. This will fail due to malformed config.yaml. That's intentional :)
    ``sudo docker run --name my_hubibot -v "`pwd`/config.yaml:/app/config.yaml" vdbg/hubibot``
 3. `sudo docker cp my_hubibot:/app/template.config.yaml config.yaml`
 4. Edit `config.yaml` by following the instructions in the file
-5. `sudo docker start my_hubibot -i`  
+5. `sudo docker start my_hubibot -i`
   This will display logging on the command window allowing for rapid troubleshooting. `Ctrl-C` to stop the container if `config.yaml` is changed
 7. When done testing the config:
   * `sudo docker container rm my_hubibot`
@@ -55,11 +55,11 @@ Choose one of these 3 methods.
 1. `git clone https://github.com/vdbg/hubibot.git`
 2. `sudo docker build -t hubibot_image hubibot`
 3. `cd hubibot`
-4. `cp template.config.yaml config.yaml` 
+4. `cp template.config.yaml config.yaml`
 5. Edit `config.yaml` by following the instructions in the file
-6. Test run: ``sudo docker run --name my_hubibot -v "`pwd`/config.yaml:/app/config.yaml" hubibot_image``  
+6. Test run: ``sudo docker run --name my_hubibot -v "`pwd`/config.yaml:/app/config.yaml" hubibot_image``
    This will display logging on the command window allowing for rapid troubleshooting. `Ctrl-C` to stop the container if `config.yaml` is changed
-7. If container needs to be restarted for testing: `sudo docker start my_hubibot -i` 
+7. If container needs to be restarted for testing: `sudo docker start my_hubibot -i`
 8. When done testing the config:
   * `sudo docker container rm my_hubibot`
   * ``sudo docker run -d --name my_hubibot -v "`pwd`/config.yaml:/app/config.yaml" --restart=always --memory=100m hubibot_image``
@@ -75,7 +75,7 @@ To install:
 2. `cd hubibot`
 3. `cp template.config.yaml config.yaml`
 4. Edit `config.yaml` by following the instructions in the file
-5. `pip3 install -r requirements.txt` 
+5. `pip3 install -r requirements.txt`
 6. Run the program:
   * Interactive mode: `python3 main.py`
   * Shorter: `.\main.py` (Windows) or `./main.py` (any other OS).
