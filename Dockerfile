@@ -1,25 +1,22 @@
-# Alpine for smaller size
 FROM python:3.9-alpine
 
-# Create a system account hubibot.hubibot
 RUN addgroup -S hubibot && adduser -S hubibot -G hubibot
-# Non-alpine equivalent of above:
-#RUN groupadd -r hubibot && useradd -r -m -g hubibot hubibot
 
 USER hubibot
 
 WORKDIR /app
 
-# set environment variables
-# PYTHONDONTWRITEBYTECODE: Prevents Python from writing pyc files to disc
-# PYTHONUNBUFFERED: Prevents Python from buffering stdout and stderr
+# Prevents Python from writing pyc files to disc
 ENV PYTHONDONTWRITEBYTECODE 1
+# Prevents Python from buffering stdout and stderr
 ENV PYTHONUNBUFFERED 1
+# Install location of upgraded pip
+ENV PATH /home/hubibot/.local/bin:$PATH
 
-COPY requirements.txt     /app
+COPY requirements.txt     /app/
 
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r ./requirements.txt --no-warn-script-location 
+RUN pip install --no-cache-dir --disable-pip-version-check --upgrade pip
+RUN pip install --no-cache-dir -r ./requirements.txt
 
 COPY *.py                 /app/
 COPY template.config.yaml /app/

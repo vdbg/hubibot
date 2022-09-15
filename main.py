@@ -600,15 +600,15 @@ class Homebot:
         self.telegram.updater.idle()
 
 
+CONFIG_FILE = "config.yaml"
+
 try:
-    with open(Path(__file__).with_name("config.yaml")) as config_file:
+    with open(Path(__file__).with_name(CONFIG_FILE)) as config_file:
         config = yaml.safe_load(config_file)
 
-        if "telegram" not in config:
-            raise ValueError("Invalid config.yaml. Section telegram required.")
-
-        if "hubitat" not in config:
-            raise ValueError("Invalid config.yaml. Section hubitat required.")
+        for name in {"telegram", "hubitat"}:
+            if name not in config:
+                raise ValueError(f"Invalid {CONFIG_FILE}: missing section {name}.")
 
         if "main" in config:
             conf = config["main"]
@@ -624,5 +624,5 @@ try:
         exit(0)
 
 except FileNotFoundError as e:
-    logging.error("Missing config.yaml file.")
+    logging.error(f"Missing {e.filename}.")
     exit(2)
