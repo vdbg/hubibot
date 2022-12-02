@@ -1,181 +1,27 @@
-#!/bin/python3
+#! /usr/bin/env python3
 
-from aliases import Aliases
 import datetime
-from enum import IntEnum
-
-# https://github.com/danielorf/pyhubitat
-from pyhubitat import MakerAPI
+from device import Device
+from hubitat import Hubitat
 import logging
 from pathlib import Path
+import platform
 import pytz  # timezones
 import re
+import sys
 import threading
 
 # https://github.com/python-telegram-bot/python-telegram-bot
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ParseMode
-from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler, MessageHandler, Filters, Updater
+from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler, MessageHandler, Filters
+from telegram_wrapper import AccessLevel, Telegram, TelegramUser
 from typing import Union
 import yaml
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 
-class AccessLevel(IntEnum):
-    NONE = 0
-    DEVICE = 1
-    SECURITY = 2
-    ADMIN = 3
-
-
-class BotUser:
-    def __init__(self, id: int, access_level: AccessLevel, user_group: str, device_groups: list) -> None:
-        self.id = id
-        self.access_level = access_level
-        self.user_group = user_group
-        self.device_groups = device_groups
-        logging.debug(f"User={id}; AccessLevel:={access_level}; UserGroup={self.user_group}.")
-
-    def has_access(self, requested: AccessLevel) -> bool:
-        return self.access_level >= requested
-
-
-class Telegram:
-    def __init__(self, conf: dict, hubitat):
-        self.hubitat = hubitat
-        self.users = {}
-        self.rejected_message = conf["rejected_message"]
-        for group_name, group_data in conf["user_groups"].items():
-            access_level = AccessLevel[group_data["access_level"]]
-            device_groups = [hubitat.get_device_group(name) for name in group_data["device_groups"]]
-            for id in map(int, group_data["ids"]):
-                if id in self.users:
-                    raise ValueError(f"User id {id} is referenced in both groups '{group_name}' and '{self.users[id].user_group}'.")
-                self.users[id] = BotUser(id, access_level, group_name, device_groups)
-        self.updater = Updater(token=conf["token"], use_context=True)
-        self.dispatcher = self.updater.dispatcher
-
-    def get_user(self, id: int) -> BotUser:
-        return self.users[id]
-
-
-class Device:
-    def __init__(self, device: dict):
-        self.id: int = int(device["id"])
-        self.label: str = device["label"]
-        self.type: str = device["type"]
-        self.commands: list[str] = device["commands"]
-        self.description: str = None
-        self.supported_commands: list[str] = []
-
-
-class DeviceGroup:
-    def __init__(self, name: str, conf: dict, hubitat):
-        self.hubitat = hubitat
-        self.name = name
-        self.allowed_device_ids = set(map(int, conf["allowed_device_ids"]))
-        self.rejected_device_ids = set(map(int, conf["rejected_device_ids"]))
-        self._devices = None
-        logging.debug(f"DeviceGroup: {name}. AllowedDeviceIds: {self.allowed_device_ids}. RejectedDeviceIds: {self.rejected_device_ids}.")
-
-    def refresh_devices(self) -> None:
-        self._devices = None
-
-    def get_devices(self) -> dict[str, Device]:
-        def is_allowed_device(device: Device) -> bool:
-            name = f"{device.label}:{device.id}"
-            if self.allowed_device_ids and not device.id in self.allowed_device_ids:
-                logging.debug(f"Removing device '{name}' because not in allowed list.")
-                return False
-            if self.rejected_device_ids and device.id in self.rejected_device_ids:
-                logging.debug(f"Removing device '{name}' because in rejected list.")
-                return False
-            commands = [c["command"] for c in device.commands]
-            supported_commands = set()
-
-            for command in commands:
-                if command in self.hubitat.he_to_bot_commands:
-                    bot_command = self.hubitat.he_to_bot_commands[command] or "/" + command
-                    supported_commands.add(bot_command)
-
-            device.supported_commands = supported_commands
-
-            return True
-
-        if self._devices is None:
-            logging.debug(f"Refreshing device cache for device group '{self.name}'.")
-            self._devices = {self.hubitat.case_hack(device.label): device for device in self.hubitat.get_all_devices() if is_allowed_device(device)}
-        return self._devices
-
-    def get_device(self, name: str) -> dict[str, Device]:
-        return self.get_devices().get(self.hubitat.case_hack(name), None)
-
-
-class Hubitat:
-    def __init__(self, conf: dict):
-        hub = f"{conf['url']}apps/api/{conf['appid']}"
-        logging.info(f"Connecting to hubitat Maker API app {hub}")
-        self.api = MakerAPI(conf["token"], hub)
-        self.device_groups = {}
-        self._devices_cache = None
-        self.case_insensitive: bool = bool(conf["case_insensitive"])
-        self._aliases = Aliases(conf["aliases"], self.case_insensitive)
-        self._device_descriptions: dict[int, str] = conf["device_descriptions"]
-        self.he_to_bot_commands = {"on": None, "off": None, "setLevel": "/dim", "open": None, "close": None, "lock": None, "unlock": None}
-        # because Python doesn't support case insensitive searches
-        # and Hubitats requires exact case, we create a dict{lowercase,requestedcase}
-        self.hsm_arm: dict[str, str] = {x.lower(): x for x in conf["hsm_arm_values"]}
-        for name, data in conf["device_groups"].items():
-            self.device_groups[name] = DeviceGroup(name, data, self)
-        if not self.device_groups:
-            raise Exception("At least one device group must be specified in the config file.")
-
-    def resolve_device(self, name: str, device_groups: list) -> Device:
-        return self._aliases.resolve("device", name, lambda name: self.get_device(name, device_groups))
-
-    def resolve_hsm(self, name: str) -> str:
-        return self._aliases.resolve("hsm", name, lambda name: self.hsm_arm.get(name, None))
-
-    def resolve_mode(self, name: str, modes) -> dict[str, str]:
-        modes_dict = {mode["name"].lower(): mode for mode in modes}
-        return self._aliases.resolve("mode", name, lambda name: modes_dict.get(name, None))
-
-    def case_hack(self, name: str) -> str:
-        # Gross Hack (tm) because Python doesn't support case comparers for dictionaries
-        if self.case_insensitive:
-            name = name.lower()
-        return name
-
-    def refresh_devices(self) -> None:
-        self._devices_cache = None
-        for g in self.device_groups.values():
-            g.refresh_devices()
-
-    def get_device_group(self, name: str) -> DeviceGroup:
-        return self.device_groups[name]
-
-    def get_device_groups(self) -> list[str]:
-        return self.device_groups.values()
-
-    def get_all_devices(self) -> list[Device]:
-        if self._devices_cache is None:
-            logging.info("Refreshing all devices cache")
-            self._devices_cache = [Device(x) for x in self.api.list_devices_detailed()]
-
-            for device in self._devices_cache:
-                device.description = self._device_descriptions.get(device.id)
-
-        return self._devices_cache
-
-    def get_device(self, name: str, groups: list[DeviceGroup]) -> dict[str, Device]:
-        for group in groups:
-            ret = group.get_device(name)
-            if ret:
-                return ret
-        return None
-
-
-class Homebot:
+class HubiBot:
     def __init__(self, telegram: Telegram, hubitat: Hubitat):
         self.telegram = telegram
         self.hubitat = hubitat
@@ -192,7 +38,14 @@ class Homebot:
             return
         if isinstance(text, list):
             text = "\n".join(text)
-        context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=parse_mode)
+        try:
+            context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=parse_mode)
+        except Exception as e:
+            if parse_mode == ParseMode.MARKDOWN:
+                logging.error(f"Unable to send message; possibly Markdown issue due to caller not using markdown_escape(). Trying again with formatting disabled.", exc_info=e)
+                context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=None)
+            else:
+                raise
 
     def add_command(self, cmd: list, hlp: str, fn, access_level: AccessLevel, params: str = None) -> None:
         helptxt = ""
@@ -224,6 +77,8 @@ class Homebot:
         return None
 
     def markdown_escape(self, text: str) -> str:
+        if not text:
+            return ""
         text = re.sub(r"([_*\[\]()~`>\#\+\-=|\.!])", r"\\\1", text)
         text = re.sub(r"\\\\([_*\[\]()~`>\#\+\-=|\.!])", r"\1", text)
         return text
@@ -234,7 +89,7 @@ class Homebot:
     def set_timezone(self, context: CallbackContext, value: str) -> None:
         context.user_data["tz"] = value
 
-    def get_user(self, update: Update) -> BotUser:
+    def get_user(self, update: Update) -> TelegramUser:
         return self.telegram.get_user(update.effective_user.id)
 
     def has_access(self, update: Update, access_level: AccessLevel) -> bool:
@@ -263,6 +118,7 @@ class Homebot:
             supported_commands = device.supported_commands
             if bot_command not in supported_commands:
                 self.send_md(update, context, f"Command {bot_command} not supported by device `{device.label}`.")
+                self.send_md(update, context, f"Supported commands are: `{ '`, `'.join(supported_commands) }`.")
                 return
             self.log_command(update, bot_command, device)
             if isinstance(command, list):
@@ -372,7 +228,7 @@ class Homebot:
                 return
 
             def row(date, name, value) -> str:
-                return f"{date :20}|{name :12}|{value:10}"
+                return f"{date :20}|{name :12}|{value or '':10}"
 
             text = [f"Events for device *{device.label}*, timezone {tz_text}:", "```", row("date", "name", "value")]
 
@@ -394,7 +250,7 @@ class Homebot:
 
         def get_description(device: Device) -> str:
             if device.description:
-                return ": " + device.description
+                return ": " + self.markdown_escape(device.description)
             else:
                 return ""
 
@@ -404,9 +260,9 @@ class Homebot:
             devices_text.append("No devices.")
         else:
             if self.has_access(update, AccessLevel.ADMIN):
-                devices_text += [f"{info.label}: `{info.id}` ({info.type}) {info.description or ''}" for name, info in sorted(devices.items())]
+                devices_text += [f"{self.markdown_escape(info.label)}: `{info.id}` ({info.type}) {self.markdown_escape(info.description)}" for name, info in sorted(devices.items())]
             else:
-                devices_text += [f"{info.label} {get_description(info)}" for name, info in sorted(devices.items())]
+                devices_text += [f"{self.markdown_escape(info.label)} {get_description(info)}" for name, info in sorted(devices.items())]
         self.send_md(update, context, devices_text)
 
     def command_list_devices(self, update: Update, context: CallbackContext) -> None:
@@ -601,6 +457,11 @@ class Homebot:
 
 
 CONFIG_FILE = "config.yaml"
+SUPPORTED_PYTHON_MAJOR = 3
+SUPPORTED_PYTHON_MINOR = 9
+
+if sys.version_info < (SUPPORTED_PYTHON_MAJOR, SUPPORTED_PYTHON_MINOR):
+    raise Exception(f"Python version {SUPPORTED_PYTHON_MAJOR}.{SUPPORTED_PYTHON_MINOR} or later required. Current version: {platform.python_version()}.")
 
 try:
     with open(Path(__file__).with_name(CONFIG_FILE)) as config_file:
@@ -617,7 +478,7 @@ try:
         hubitat = Hubitat(config["hubitat"])
         telegram = Telegram(config["telegram"], hubitat)
 
-        hal = Homebot(telegram, hubitat)
+        hal = HubiBot(telegram, hubitat)
         hal.configure()
         hal.run()
 
