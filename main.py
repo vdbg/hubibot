@@ -42,8 +42,7 @@ class HubiBot:
             context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=parse_mode)
         except Exception as e:
             if parse_mode == ParseMode.MARKDOWN:
-                logging.error(f"Unable to send message; possibly Markdown issue due to caller not using markdown_escape(). Trying again with formatting disabled.")
-                logging.error(e)
+                logging.error(f"Unable to send message; possibly Markdown issue due to caller not using markdown_escape(). Trying again with formatting disabled.", exc_info=e)
                 context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=None)
             else:
                 raise
