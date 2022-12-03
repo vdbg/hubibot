@@ -5,8 +5,8 @@ telegram:
   user_groups:                     # See README.md for explanation on user groups
     admins:                        # There can be any number of device groups and names (e.g. admins, family, guests) are free-form
       ids: [ 0, 1, 2 ]             # See README.md for how to get a user id
-      access_level: ADMIN          # possible values: ADMIN, SECURITY, DEVICE, NONE. see README.md for details
-      device_groups: [ "all" ]     # device groups are defined in hubitat:device_groups below
+      access_level: ADMIN          # Possible values: ADMIN, SECURITY, DEVICE, NONE. see README.md for details
+      device_groups: [ "all" ]     # Device groups are defined in hubitat:device_groups below
     family:                        # The "family" and "guests" groups can be deleted or renamed if not of any use.
       ids: [ ]
       access_level: SECURITY
@@ -31,12 +31,12 @@ hubitat:
   # \\n with n a number in the replacement string corresponds to the n'th captured string captured by the regex.
   # Note: all aliases are case insensitive
   aliases:
-    # applies to all device commands, such as /on, /off, /open, /close, /dim, /status, ...
-    # with this example, "/on office" => "/on office light" and "/off hw" => "/off hot water"
+    # Applies to all device commands, such as /on, /off, /open, /close, /dim, /status, ...
+    # Eith this example, "/on office" => "/on office light" and "/off hw" => "/off hot water"
     device: [ [ "^(.*)$", "\\1 Light" ], [ "^(.*) Closet$", "\\1 Walking Closet Light" ], [ "^hw$", "Hot Water" ], ["keybox", "key box"] ]
-    # applies to the /mode command. With this example, "/mode guest" => "/mode guests"
+    # Applies to the /mode command. With this example, "/mode guest" => "/mode guests"
     mode: [ [ "Guest", "Guests" ] ]
-    # applies to the /arm command. With this example, "/arm home" => "/arm armHome"
+    # Applies to the /arm command. With this example, "/arm home" => "/arm armHome"
     hsm: [ [ "^(.*)$", "arm\\1"]]
 
   # Optional descriptions for devices; description is returned by the /list & /info commands
@@ -54,5 +54,9 @@ hubitat:
       rejected_device_ids: [ ]
 
 main:
-  logverbosity: WARNING  # possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  logverbosity: WARNING  # Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  # Default timezone for commands returning datetimes (e.g., the /events command), for example "America/Los_Angeles"
+  # Users can deviate from default value with the /timezone command
+  # The list of possible values is here: https://github.com/newvem/pytz/blob/master/pytz/__init__.py#L327
+  default_timezone: "UTC"
 

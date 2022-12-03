@@ -22,9 +22,10 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 
 class HubiBot:
-    def __init__(self, telegram: Telegram, hubitat: Hubitat):
+    def __init__(self, telegram: Telegram, hubitat: Hubitat, default_timezone: str):
         self.telegram = telegram
         self.hubitat = hubitat
+        self.default_timezone = default_timezone
         self.list_commands = {AccessLevel.NONE: [], AccessLevel.DEVICE: ["*Device commands*:"], AccessLevel.ADMIN: ["*Admin commands*:"], AccessLevel.SECURITY: ["*Security commands*:"]}
 
     def send_text(self, update: Update, context: CallbackContext, text: Union[str, list[str]]) -> None:
@@ -183,7 +184,7 @@ class HubiBot:
             if timezone:
                 self.send_text(update, context, f"User timezone is: {timezone}.")
             else:
-                self.send_text(update, context, "No timezone set for current user. Using UTC.")
+                self.send_text(update, context, f"No timezone set for current user. Default timezone is {self.default_timezone}.")
 
     def command_device_last_event(self, update: Update, context: CallbackContext) -> None:
         self.get_device_events(update, context, True)
@@ -203,20 +204,18 @@ class HubiBot:
                 return
 
             tz = self.get_timezone(context)
-            tz_text = "UTC"
-
-            if tz:
-                tz_text = self.markdown_escape(tz)
-                tz = pytz.timezone(tz)
+            if not tz:
+                tz = self.default_timezone
+            tz_text = self.markdown_escape(tz)
+            tz = pytz.timezone(tz)
 
             def convert_date(event_date: str) -> str:
                 # event_date is a string in ISO 8601 format
                 # e.g. 2022-02-03T04:02:32+0000
                 # start by transforming into a real datetime
                 event_date = datetime.datetime.strptime(event_date, "%Y-%m-%dT%H:%M:%S%z")
-                if tz:
-                    # now transform it to the proper tz
-                    event_date = event_date.astimezone(tz)
+                # now transform it to the proper tz
+                event_date = event_date.astimezone(tz)
                 # and ... convert back to string.
                 event_date = event_date.strftime("%Y-%m-%d %H:%M:%S")
                 return event_date
@@ -471,14 +470,16 @@ try:
             if name not in config:
                 raise ValueError(f"Invalid {CONFIG_FILE}: missing section {name}.")
 
+        default_timezone = "UTC"
         if "main" in config:
             conf = config["main"]
             logging.getLogger().setLevel(logging.getLevelName(conf["logverbosity"]))
+            default_timezone = conf["default_timezone"]
 
         hubitat = Hubitat(config["hubitat"])
         telegram = Telegram(config["telegram"], hubitat)
 
-        hal = HubiBot(telegram, hubitat)
+        hal = HubiBot(telegram, hubitat, default_timezone)
         hal.configure()
         hal.run()
 
