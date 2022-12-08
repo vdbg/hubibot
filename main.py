@@ -63,19 +63,18 @@ class HubiBot:
     def get_single_arg(self, context: CallbackContext) -> str:
         return self.hubitat.case_hack(" ".join(context.args))
 
-    def get_device(self, update: Update, context: CallbackContext) -> Device:
+    def get_devices(self, update: Update, context: CallbackContext) -> list[Device]:
         device_name = self.get_single_arg(context)
         if not device_name:
             self.send_text(update, context, "Device name not specified.")
-            return None
+            return list()
 
-        device = self.hubitat.resolve_device(device_name, self.get_user(update).device_groups)
+        devices = self.hubitat.resolve_devices(device_name, self.get_user(update).device_groups)
 
-        if device:
-            return device
+        if not devices:
+            self.send_text(update, context, "Device not found. '/l' to get list of devices.")
 
-        self.send_text(update, context, "Device not found. '/l' to get list of devices.")
-        return None
+        return devices
 
     def markdown_escape(self, text: str) -> str:
         if not text:
@@ -114,13 +113,12 @@ class HubiBot:
 
     def device_actuator(self, update: Update, context: CallbackContext, command: Union[str, list], bot_command: str, message: str, access_level=AccessLevel.DEVICE) -> None:
         self.request_access(update, context, access_level)
-        device = self.get_device(update, context)
-        if device:
+        for device in self.get_devices(update, context):
             supported_commands = device.supported_commands
             if bot_command not in supported_commands:
                 self.send_md(update, context, f"Command {bot_command} not supported by device `{device.label}`.")
                 self.send_md(update, context, f"Supported commands are: `{ '`, `'.join(supported_commands) }`.")
-                return
+                continue
             self.log_command(update, bot_command, device)
             if isinstance(command, list):
                 self.hubitat.api.send_command(device.id, command[0], command[1])
@@ -130,8 +128,7 @@ class HubiBot:
 
     def command_device_info(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.DEVICE)
-        device = self.get_device(update, context)
-        if device:
+        for device in self.get_devices(update, context):
             info = self.hubitat.api.get_device_info(device.id)
             self.log_command(update, "/info", device)
             info["supported_commands"] = ", ".join(device.supported_commands)
@@ -152,8 +149,7 @@ class HubiBot:
 
     def command_device_status(self, update: Update, context: CallbackContext) -> None:
         self.request_access(update, context, AccessLevel.DEVICE)
-        device = self.get_device(update, context)
-        if device:
+        for device in self.get_devices(update, context):
             self.log_command(update, "/status", device)
             status = self.hubitat.api.device_status(device.id)
             text = [f"Status for device *{device.label}*:"]
@@ -194,14 +190,13 @@ class HubiBot:
 
     def get_device_events(self, update: Update, context: CallbackContext, last_only: bool) -> None:
         self.request_access(update, context, AccessLevel.SECURITY)
-        device = self.get_device(update, context)
-        if device:
+        for device in self.get_devices(update, context):
             self.log_command(update, "/events", device)
             events = self.hubitat.api.get_device_events(device.id)
 
             if len(events) == 0:
                 self.send_md(update, context, f"No events for device *{device.label}*")
-                return
+                continue
 
             tz_text = self.get_timezone(context)
             if not tz_text:
@@ -224,7 +219,7 @@ class HubiBot:
                 event = events[0]
                 text = [f"Last event for device *{device.label}*:", f"Time: `{convert_date(event['date'])}` ({tz_text})", f"Name: {event['name']}", f"Value: {self.markdown_escape(event['value'])}"]
                 self.send_md(update, context, text)
-                return
+                continue
 
             def row(date, name, value) -> str:
                 return f"{date :20}|{name :12}|{value or '':10}"

@@ -16,6 +16,7 @@ class Hubitat:
         self._aliases = Aliases(conf["aliases"], self.case_insensitive)
         self._device_descriptions: dict[int, str] = conf["device_descriptions"]
         self.he_to_bot_commands = {"on": None, "off": None, "setLevel": "/dim", "open": None, "close": None, "lock": None, "unlock": None}
+        self._device_name_separator: str = conf["device_name_separator"]
         # because Python doesn't support case insensitive searches
         # and Hubitats requires exact case, we create a dict{lowercase,requestedcase}
         self.hsm_arm: dict[str, str] = {x.lower(): x for x in conf["hsm_arm_values"]}
@@ -24,8 +25,17 @@ class Hubitat:
         if not self.device_groups:
             raise Exception("At least one device group must be specified in the config file.")
 
-    def resolve_device(self, name: str, device_groups: list[DeviceGroup]) -> Device:
-        return self._aliases.resolve("device", name, lambda name: self.get_device(name, device_groups))
+    def resolve_devices(self, names: str, device_groups: list[DeviceGroup]) -> list[Device]:
+        devices = set()
+        for name in names.split(self._device_name_separator):
+            name = name.strip()
+            if not name:
+                continue
+            device = self._aliases.resolve("device", name, lambda name: self.get_device(name, device_groups))
+            if not device:
+                return set()  # all or nothing
+            devices.add(device)
+        return devices
 
     def resolve_hsm(self, name: str) -> str:
         return self._aliases.resolve("hsm", name, lambda name: self.hsm_arm.get(name, None))
