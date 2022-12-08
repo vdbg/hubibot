@@ -203,11 +203,11 @@ class HubiBot:
                 self.send_md(update, context, f"No events for device *{device.label}*")
                 return
 
-            tz = self.get_timezone(context)
-            if not tz:
-                tz = self.default_timezone
-            tz_text = self.markdown_escape(tz)
-            tz = pytz.timezone(tz)
+            tz_text = self.get_timezone(context)
+            if not tz_text:
+                tz_text = self.default_timezone
+            tz = pytz.timezone(tz_text)
+            tz_text = self.markdown_escape(tz_text)
 
             def convert_date(event_date: str) -> str:
                 # event_date is a string in ISO 8601 format
