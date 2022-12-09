@@ -22,6 +22,7 @@ hubitat:
   appid: 123                             # Log in to Hubitat, go in Apps, Maker API. The Id in is in the url
   token: 'enter your hubitat token here' # Log in to Hubitat, go in Apps, Maker API, The token is in the examples
   case_insensitive: true                 # If true, "/on office" turns on device "Office". Switch to false if some devices only differ by case
+  device_name_separator: ','             # Separator used for specifying multiple devices, e.g., "/on device1,device2" for "/on device1" and "/on device2"
   # List of available values for the "/arm" command
   hsm_arm_values: ['armAway', 'armHome', 'armNight', 'disarm', 'disarmAll', 'armAll', 'cancelAlerts']
   # Aliases allow for replacing the named target of a command when the name does not exist but its replacement does.

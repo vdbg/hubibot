@@ -10,8 +10,10 @@ Notable pros compared to alternatives are fine-grained access control and not re
 ## Highlights
 
 * Can issue commands to Hubitat devices by talking to a Telegram robot, e.g., `/on Office Light` to turn on the device named "Office Light".
+* Can issue different types of command: on/off, lock/unlock, open/close, dim, ...
 * Can get the status, capabilities and history of a device.
 * Can give multiple names to devices, e.g., `/on hw` doing the same as `/on Hot Water`.
+* Can act on multiple devices at once, e.g., `/on hw, office` to turn on both  "Hot Water" and "Office Light".
 * Can query and change Hubitat's mode or security monitor state.
 * Can expose different sets of devices and permissions to different groups of people, e.g., person managing Hubitat, family members and friends.
 
@@ -38,6 +40,8 @@ Choose one of these 3 methods.
 
 ### Using pre-built Docker image
 
+Dependency: Docker installed.
+
 1. `touch config.yaml`
 2. This will fail due to malformed config.yaml. That's intentional :)
    ``sudo docker run --name my_hubibot -v "`pwd`/config.yaml:/app/config.yaml" vdbg/hubibot``
@@ -51,6 +55,8 @@ Choose one of these 3 methods.
   * To see logs: `sudo docker container logs -f my_hubibot`
 
 ### Using Docker image built from source
+
+Dependency: Docker installed.
 
 1. `git clone https://github.com/vdbg/hubibot.git`
 2. `sudo docker build -t hubibot_image hubibot`
@@ -67,9 +73,7 @@ Choose one of these 3 methods.
 
 ### Running directly on the device
 
-[Python](https://www.python.org/) 3.7 or later with pip3 required.
-
-To install:
+Dependency: [Python](https://www.python.org/) 3.9+ and pip3 installed.
 
 1. `git clone https://github.com/vdbg/hubibot.git`
 2. `cd hubibot`
@@ -101,6 +105,19 @@ User groups represent collection of Telegram users that have access to device gr
 * `ADMIN`: can use the same commands as `access_level: SECURITY`, and also admin commands e.g., `/users`, `/groups`, `/refresh`, `/exit`. In addition some commands have more detailed output (e.g., `/list`, `/status`).
 
 A user can only belong to one user group, but a device can belong to multiple device groups and a device group can be referenced by multiple user groups.
+
+## Device name resolution
+
+For all commands taking in device names (such as : `/on name of device`), the app will:
+
+1. Split the input using the `hubitat:device_name_separator` setting in `config.yaml` and remove all leading/trailing spaces. 
+  For example, "  office light,   bedroom  " becomes "office light", "bedroom"
+2. Look for these in the list of devices Hubitat exposes through MakerAPI that are accessible to the current user (see previous section). 
+  If the `hubitat:case_insensitive` setting in `config.yaml` is set to `true`, then the case doesn't need to match.
+  For example "office light" will be resolved to "Office Light"
+3. For devices not found in previous step, the transforms in the `hubitat:aliases:device` setting in `config.yaml` are tried in order.
+  For example, the app will transform "bedroom" to "bedroom light" and look for that name
+4. If there are entries that still could not be found, the entire name resolution process fails.
 
 ## Troubleshooting
 

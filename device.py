@@ -10,11 +10,17 @@ class Device:
         self.description: str = None
         self.supported_commands: list[str] = []
 
+    def __eq__(self, other):
+        return isinstance(other, type(self)) and self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
+
 
 class DeviceGroup:
     def __init__(self, name: str, conf: dict, hubitat):
         self.hubitat = hubitat
-        self.name = name
+        self.name: str = name
         self.allowed_device_ids = set(map(int, conf["allowed_device_ids"]))
         self.rejected_device_ids = set(map(int, conf["rejected_device_ids"]))
         self._devices: dict[str, Device] = None
