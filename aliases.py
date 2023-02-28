@@ -1,6 +1,8 @@
 import logging
-from typing import Callable
+from typing import Callable, TypeVar
 import re
+
+RetT = TypeVar("RetT")
 
 
 class Aliases:
@@ -14,7 +16,7 @@ class Aliases:
             name = name.lower()
         return name
 
-    def resolve(self, key: str, name: str, func: Callable[[str], any]) -> any:
+    def resolve(self, key: str, name: str, func: Callable[[str], RetT]) -> RetT | None:
         ret = func(self.case_hack(name))
         if ret:
             return ret

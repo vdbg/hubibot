@@ -11,7 +11,7 @@ class Hubitat:
         logging.info(f"Connecting to hubitat Maker API app {hub}")
         self.api = MakerAPI(conf["token"], hub)
         self.device_groups: dict[str, DeviceGroup] = {}
-        self._devices_cache: list[Device] = None
+        self._devices_cache: list[Device] | None = None
         self.case_insensitive: bool = bool(conf["case_insensitive"])
         self._aliases = Aliases(conf["aliases"], self.case_insensitive)
         self._device_descriptions: dict[int, str] = conf["device_descriptions"]
@@ -25,22 +25,22 @@ class Hubitat:
         if not self.device_groups:
             raise Exception("At least one device group must be specified in the config file.")
 
-    def resolve_devices(self, names: str, device_groups: list[DeviceGroup]) -> list[Device]:
+    def resolve_devices(self, names: str, device_groups: list[DeviceGroup]) -> set[Device]:
         devices = set()
         for name in names.split(self._device_name_separator):
             name = name.strip()
             if not name:
                 continue
-            device = self._aliases.resolve("device", name, lambda name: self.get_device(name, device_groups))
-            if not device:
+            devices_to_add = self._aliases.resolve("device", name, lambda name: self.__get_devices(name, device_groups))
+            if not devices_to_add:
                 return set()  # all or nothing
-            devices.add(device)
+            devices = devices.union(devices_to_add)
         return devices
 
-    def resolve_hsm(self, name: str) -> str:
+    def resolve_hsm(self, name: str) -> str | None:
         return self._aliases.resolve("hsm", name, lambda name: self.hsm_arm.get(name, None))
 
-    def resolve_mode(self, name: str, modes) -> dict[str, str]:
+    def resolve_mode(self, name: str, modes) -> dict[str, str] | None:
         modes_dict = {mode["name"].lower(): mode for mode in modes}
         return self._aliases.resolve("mode", name, lambda name: modes_dict.get(name, None))
 
@@ -58,8 +58,8 @@ class Hubitat:
     def get_device_group(self, name: str) -> DeviceGroup:
         return self.device_groups[name]
 
-    def get_device_groups(self) -> list[str]:
-        return self.device_groups.values()
+    def get_device_groups(self) -> list[DeviceGroup]:
+        return list(self.device_groups.values())
 
     def get_all_devices(self) -> list[Device]:
         if self._devices_cache is None:
@@ -67,13 +67,18 @@ class Hubitat:
             self._devices_cache = [Device(x) for x in self.api.list_devices_detailed()]
 
             for device in self._devices_cache:
-                device.description = self._device_descriptions.get(device.id)
+                device.description = self._device_descriptions.get(device.id, "")
 
         return self._devices_cache
 
-    def get_device(self, name: str, groups: list[DeviceGroup]) -> dict[str, Device]:
+    def __get_devices(self, name: str, groups: list[DeviceGroup]) -> set[Device]:
+        devices = set()
         for group in groups:
             ret = group.get_device(name)
             if ret:
-                return ret
-        return None
+                devices.add(ret)
+                return devices
+
+        for group in groups:
+            devices = devices.union(group.regex_search_devices(name))
+        return devices
