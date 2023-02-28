@@ -1,15 +1,8 @@
+from accesslevel import AccessLevel
 from device import DeviceGroup
-from enum import IntEnum
 from hubitat import Hubitat
 import logging
 from telegram.ext import Updater
-
-
-class AccessLevel(IntEnum):
-    NONE = 0
-    DEVICE = 1
-    SECURITY = 2
-    ADMIN = 3
 
 
 class TelegramUser:

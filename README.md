@@ -100,7 +100,7 @@ Device groups represent collection of Hubitat devices that can be accessed by us
 
 User groups represent collection of Telegram users that have access to device groups. User groups can contain any number of Telegram user ids (those with no user ids are ignored) and reference any number of device groups. User groups with an `access_level` set to:
 * `NONE`: cannot use any commands. Useful to disable a user group.
-* `DEVICE`: can use device commands e.g., `/list`, `/on`, `/off`, `/open`, `/close`, `/dim`, `/status`, `/info`.
+* `DEVICE`: can use device commands e.g., `/list`, `/regex`, `/on`, `/off`, `/open`, `/close`, `/dim`, `/status`, `/info`.
 * `SECURITY`: can use the same commands as `access_level: DEVICE`, and also act on locks with `/lock` & `/unlock` commands, the `/arm` command for [Hubitat Safety Monitor](https://docs.hubitat.com/index.php?title=Hubitat%C2%AE_Safety_Monitor_Interface), the `/mode` command to view and change the mode, the `/events` command to see a device's history, and the `/tz` command to change the timezone for `/events` and `/lastevent`.
 * `ADMIN`: can use the same commands as `access_level: SECURITY`, and also admin commands e.g., `/users`, `/groups`, `/refresh`, `/exit`. In addition some commands have more detailed output (e.g., `/list`, `/status`).
 
@@ -115,9 +115,15 @@ For all commands taking in device names (such as : `/on name of device`), the ap
 2. Look for these in the list of devices Hubitat exposes through MakerAPI that are accessible to the current user (see previous section). 
   If the `hubitat:case_insensitive` setting in `config.yaml` is set to `true`, then the case doesn't need to match.
   For example "office light" will be resolved to "Office Light"
-3. For devices not found in previous step, the transforms in the `hubitat:aliases:device` setting in `config.yaml` are tried in order.
+3. For devices not found, the bot will try and interpret the input as a regex. For example, "(Office|Bedroom) Light" will resolve to both "Office Light" and "Bedroom Light"
+4. For devices still not found, the transforms in the `hubitat:aliases:device` setting in `config.yaml` are tried in order.
   For example, the app will transform "bedroom" to "bedroom light" and look for that name
-4. If there are entries that still could not be found, the entire name resolution process fails.
+5. If there are entries that still could not be found, the entire name resolution process fails.
+
+## Difference between /list and /regex
+
+* `/list` uses the filter as a substring.
+* `/regex` uses the filter as a regex.
 
 ## Troubleshooting
 
