@@ -5,6 +5,7 @@ from device import Device, DeviceGroup
 from hubitat import Hubitat
 import logging
 from pathlib import Path
+import os
 import platform
 import pytz  # timezones
 import re
