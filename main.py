@@ -474,19 +474,15 @@ class HubiBot:
         self.telegram.updater.start_polling()
         self.telegram.updater.idle()
 
-env_config_file = os.getenv('HUBIBOT_CONFIG_FILE')
-if env_config_file:
-  CONFIG_FILE_PATH = env_config_file
-else:
-  CONFIG_FILE_PATH = Path(__file__).with_name("config.yaml")
 SUPPORTED_PYTHON_MAJOR = 3
 SUPPORTED_PYTHON_MINOR = 11
 
 if sys.version_info < (SUPPORTED_PYTHON_MAJOR, SUPPORTED_PYTHON_MINOR):
     raise Exception(f"Python version {SUPPORTED_PYTHON_MAJOR}.{SUPPORTED_PYTHON_MINOR} or later required. Current version: {platform.python_version()}.")
 
+config_file_path = os.getenv("HUBIBOT_CONFIG_FILE", Path(__file__).with_name("config.yaml"))
 try:
-    with open(CONFIG_FILE_PATH) as config_file:
+    with open(config_file_path) as config_file:
         config = yaml.safe_load(config_file)
 
         for name in {"telegram", "hubitat"}:
