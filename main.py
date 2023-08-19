@@ -5,6 +5,7 @@ from device import Device, DeviceGroup
 from hubitat import Hubitat
 import logging
 from pathlib import Path
+import os
 import platform
 import pytz  # timezones
 import re
@@ -473,16 +474,15 @@ class HubiBot:
         self.telegram.updater.start_polling()
         self.telegram.updater.idle()
 
-
-CONFIG_FILE = "config.yaml"
 SUPPORTED_PYTHON_MAJOR = 3
 SUPPORTED_PYTHON_MINOR = 11
 
 if sys.version_info < (SUPPORTED_PYTHON_MAJOR, SUPPORTED_PYTHON_MINOR):
     raise Exception(f"Python version {SUPPORTED_PYTHON_MAJOR}.{SUPPORTED_PYTHON_MINOR} or later required. Current version: {platform.python_version()}.")
 
+config_file_path = os.getenv("HUBIBOT_CONFIG_FILE", Path(__file__).with_name("config.yaml"))
 try:
-    with open(Path(__file__).with_name(CONFIG_FILE)) as config_file:
+    with open(config_file_path) as config_file:
         config = yaml.safe_load(config_file)
 
         for name in {"telegram", "hubitat"}:

@@ -125,6 +125,10 @@ For all commands taking in device names (such as : `/on name of device`), the ap
 * `/list` uses the filter as a substring.
 * `/regex` uses the filter as a regex.
 
+## Environment Variables
+
+In some docker environments, configuration via environment variables is a common pattern. For example, this docker image can be run on [TrueNAS via Launch Docker Image](https://www.truenas.com/docs/scale/scaletutorials/apps/docker/) and the absolute path to the config file can be set via `HUBIBOT_CONFIG_FILE`.
+
 ## Troubleshooting
 
 * Set `main:logverbosity` to `DEBUG` in `config.yaml` to get more details. Note: **Hubitat's token is printed in plain text** when `main:logverbosity` is `DEBUG`
