@@ -4,8 +4,6 @@ from datetime import datetime
 from device import Device, DeviceGroup
 from hubitat import Hubitat
 import logging
-from pathlib import Path
-import os
 import platform
 import pytz  # timezones
 import re
@@ -18,7 +16,7 @@ from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler, 
 from accesslevel import AccessLevel
 from telegram_wrapper import Telegram, TelegramUser
 from typing import Union
-import yaml
+from config import Config
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
@@ -393,13 +391,13 @@ class HubiBot:
         self.request_access(update, context, AccessLevel.SECURITY)
         keyboard = [
             [
-                InlineKeyboardButton("Yes", callback_data='Exit_Yes'),
-                InlineKeyboardButton("No", callback_data='Exit_No'),
+                InlineKeyboardButton("Yes", callback_data="Exit_Yes"),
+                InlineKeyboardButton("No", callback_data="Exit_No"),
             ],
-            [InlineKeyboardButton("More information", callback_data='Exit_Help')],
+            [InlineKeyboardButton("More information", callback_data="Exit_Help")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        update.message.reply_text('Are you sure you want to exit the bot?', reply_markup=reply_markup)
+        update.message.reply_text("Are you sure you want to exit the bot?", reply_markup=reply_markup)
 
     def shutdown_hack(self):
         # this needs to be on a separate thread because otherwise updater.stop() deadlocks
@@ -474,35 +472,28 @@ class HubiBot:
         self.telegram.updater.start_polling()
         self.telegram.updater.idle()
 
+
 SUPPORTED_PYTHON_MAJOR = 3
 SUPPORTED_PYTHON_MINOR = 11
 
 if sys.version_info < (SUPPORTED_PYTHON_MAJOR, SUPPORTED_PYTHON_MINOR):
     raise Exception(f"Python version {SUPPORTED_PYTHON_MAJOR}.{SUPPORTED_PYTHON_MINOR} or later required. Current version: {platform.python_version()}.")
 
-config_file_path = os.getenv("HUBIBOT_CONFIG_FILE", Path(__file__).with_name("config.yaml"))
 try:
-    with open(config_file_path) as config_file:
-        config = yaml.safe_load(config_file)
+    config = Config("config.yaml", "hubibot").load()
 
-        for name in {"telegram", "hubitat"}:
-            if name not in config:
-                raise ValueError(f"Invalid {CONFIG_FILE}: missing section {name}.")
+    conf = config["main"]
+    logging.getLogger().setLevel(logging.getLevelName(conf["logverbosity"]))
+    default_timezone = conf["default_timezone"]
+    logging.debug(f"CONFIG: {config}")
+    hubitat = Hubitat(config["hubitat"])
+    telegram = Telegram(config["telegram"], hubitat)
 
-        default_timezone = "UTC"
-        if "main" in config:
-            conf = config["main"]
-            logging.getLogger().setLevel(logging.getLevelName(conf["logverbosity"]))
-            default_timezone = conf["default_timezone"]
+    hal = HubiBot(telegram, hubitat, default_timezone)
+    hal.configure()
+    hal.run()
 
-        hubitat = Hubitat(config["hubitat"])
-        telegram = Telegram(config["telegram"], hubitat)
-
-        hal = HubiBot(telegram, hubitat, default_timezone)
-        hal.configure()
-        hal.run()
-
-        exit(0)
+    exit(0)
 
 except FileNotFoundError as e:
     logging.error(f"Missing {e.filename}.")

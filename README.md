@@ -14,7 +14,7 @@ Notable pros compared to alternatives are fine-grained access control and not re
 * Can get the status, capabilities and history of a device.
 * Can give multiple names to devices, e.g., `/on hw` doing the same as `/on Hot Water`.
 * Can act on multiple devices at once, e.g., `/on hw, office` to turn on both  "Hot Water" and "Office Light".
-* Can query and change Hubitat's mode or security monitor state.
+* Can query and change Hubitat's mode or security monitor state, e.g. `/mode home` and `/arm home`.
 * Can expose different sets of devices and permissions to different groups of people, e.g., person managing Hubitat, family members and friends.
 
 
