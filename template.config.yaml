@@ -1,25 +1,37 @@
-# Must change: token, user_groups:admins:ids
+
+# This template file should be left untouched 
+# The app will in order:
+# 1. Read this file (template.config.yaml)
+# 2. Overwrite the settings with those in file config.yaml (it it exists).
+#    Note: the HUBIBOT_CONFIG_FILE environment variable can be set to specify where the file is located
+# 3. Overwrite the settings with environment variables called "HUBIBOT_<SECTION>_<KEY>" (with section and key uppercase), if these exist.
+#    For example, set the env var HUBIBOT_MAIN_LOGVERBOSITY to DEBUG to overwrite the log verbosity
+# 4. Overwrite the settings with command line parameters of the form "HUBIBOT_<SECTION>_<KEY>=<value>" (with section and key uppercase), if these exist.
+
 telegram:
   token: 'enter your telegram token here'  # Search for Botfather in your favorite search engine for instructions
-  rejected_message: "Unauthorized user :p" # Message to return to users not in any group when talking to the bot. Empty string for silently ignoring them instead
+  rejected_message: "Unauthorized user :p" # Message to return to users not in any group when talking to the bot. Empty string for silently ignoring them instead 
+  enabled_user_groups: [ ]         # List of enabled user groups. If empty, none are enabled.
   user_groups:                     # See README.md for explanation on user groups
-    admins:                        # There can be any number of device groups and names (e.g. admins, family, guests) are free-form
-      ids: [ 0, 1, 2 ]             # See README.md for how to get a user id
-      access_level: ADMIN          # Possible values: ADMIN, SECURITY, DEVICE, NONE. see README.md for details
+    # There can be any number of user groups and their names (e.g. admins, family, guests) are free-form
+    # Only the names listed in the "enabled_user_groups" setting above will be enabled
+    # the template defines admin (but not enabled), and have 2 others examples (family, and guests) commented out
+    admins:                        
+      ids: [ ]                     # See "Getting Telegram user Ids" in README.md for how to get these
+      access_level: ADMIN          # Possible values: ADMIN, SECURITY, DEVICE, NONE. See README.md for details
       device_groups: [ "all" ]     # Device groups are defined in hubitat:device_groups below
-    family:                        # The "family" and "guests" groups can be deleted or renamed if not of any use.
-      ids: [ ]
-      access_level: SECURITY
-      device_groups: [ "regular" ]
-    guests:
-      ids: [ ]
-      access_level: DEVICE
-      device_groups: [ "limited" ]
+#    family:                        
+#      ids: [ ]
+#      access_level: SECURITY
+#      device_groups: [ "regular" ]
+#    guests:
+#      ids: [ ]
+#      access_level: DEVICE
+#      device_groups: [ "limited" ]
 
-# Must change: url, appid, token
 hubitat:
   url: 'http://ipaddress/'               # What you type in the browser to log on to Hubitat
-  appid: 123                             # Log in to Hubitat, go in Apps, Maker API. The Id in is in the url
+  appid: 0                               # Log in to Hubitat, go in Apps, Maker API. The Id in is in the url
   token: 'enter your hubitat token here' # Log in to Hubitat, go in Apps, Maker API, The token is in the examples
   case_insensitive: true                 # If true, "/on office" turns on device "Office". Switch to false if some devices only differ by case
   device_name_separator: ','             # Separator used for specifying multiple devices, e.g., "/on device1,device2" for "/on device1" and "/on device2"
@@ -43,16 +55,20 @@ hubitat:
   # Optional descriptions for devices; description is returned by the /list & /info commands
   device_descriptions:
     12345: "description for device id 12345"
+  enabled_device_groups: [ ]    # List of enabled device groups. If empty, none are enabled.
   device_groups:                # See README.md for explanation on device groups
-    all:                        # Names are free-form and referenced by telegram:user_groups:<something>:device_groups
+    # Names are free-form and referenced by the telegram:user_groups:<something>:device_groups above
+    # Only the names listed in the "enabled_user_groups" setting above will be enabled
+    # The template defines admin (but not enabled), and have 2 others examples (regular, and limited) commented out
+    all:                        # Names are free-form and referenced by the telegram:user_groups:<something>:device_groups above
       allowed_device_ids:  [ ]  # List of Hubitat device ids to allow. If empty, all are allowed unless explicitly rejected 
       rejected_device_ids: [ ]  # List of Hubitat device ids to reject
-    regular:                    # In this example, the 'regular' device group includes all devices exposed by Hubitat's MakerAPI but the device with Id 789
-      allowed_device_ids:  [ ]
-      rejected_device_ids: [ 789 ]
-    limited:                    # In this example, the 'limited' device group only includes devices exposed by Hubitat with Id 123 or 456
-      allowed_device_ids:  [ 123, 456 ]
-      rejected_device_ids: [ ]
+#    regular:                    # In this example, the 'regular' device group includes all devices exposed by Hubitat's MakerAPI but the device with Id 789
+#      allowed_device_ids:  [ ]
+#      rejected_device_ids: [ 789 ]
+#    limited:                    # In this example, the 'limited' device group only includes devices exposed by Hubitat with Id 123 or 456
+#      allowed_device_ids:  [ 123, 456 ]
+#      rejected_device_ids: [ ]
 
 main:
   logverbosity: WARNING  # Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL

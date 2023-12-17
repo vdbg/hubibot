@@ -3,12 +3,20 @@ import os
 import yaml
 import ast
 from pathlib import Path
+from typing import Callable
 
 
 class Config:
-    def __init__(self, file: str, prefix: str) -> None:
+    def __init__(self, file: str, prefix: str, args: list[str]) -> None:
         self._file = file
         self._prefix = prefix.upper()
+        self._args: dict[str, str] = {}
+        for arg in args:
+            key_value = arg.split("=", 1)
+            if len(key_value) != 2 or not key_value[0].startswith(self._prefix):
+                logging.warning(f"Ignoring '{arg}' as it's not in the expected format '{self._prefix}_KEY=value")
+                continue
+            self._args[key_value[0]] = key_value[1]
 
     def __load__(self, file: Path) -> dict[str, dict] | None:
         try:
@@ -18,7 +26,8 @@ class Config:
             logging.warning(f"Missing {e.filename}.")
         return None
 
-    def __merge_dict__(self, src: dict, dst: dict) -> None:
+    # merge dist src into dst recursively
+    def __merge_dict_recursive__(self, src: dict, dst: dict) -> None:
         for k, v in src.items():
             # key doesn't exist in destination or value isn't a dict, overwrite
             if not k in dst or not isinstance(v, dict):
@@ -26,21 +35,46 @@ class Config:
                 continue
 
             # key exist in destination, and value is a dict. Recursively merge
-            self.__merge_dict__(v, dst[k])
+            self.__merge_dict_recursive__(v, dst[k])
 
-    def __merge_env__(self, prefix: str, dst: dict) -> None:
+    # update values in a dict using a key lookup lambda
+    def __merge_vars_recursive__(self, prefix: str, dst: dict, func: Callable[[str], str | None]) -> None:
         for k, v in dst.items():
             key = f"{prefix}_{k}".upper()
             if isinstance(v, dict):
-                self.__merge_env__(key, v)
+                self.__merge_vars_recursive__(key, v, func)
             else:
-                value = os.getenv(key)
-                if value:
-                    try:
-                        dst[k] = ast.literal_eval(value)
-                    except ValueError:
-                        logging.warn(f"Treating '{value}' for {key} as string")
-                        dst[k] = value
+                self.__load_val__(dst, k, key, func)
+
+    def __load_val__(self, dst: dict, key_dict: str, key_func: str, func: Callable[[str], str | None]) -> None:
+        value: str | None = func(key_func)
+        if value:
+            try:
+                dst[key_dict] = ast.literal_eval(value)
+            except ValueError:
+                logging.warn(f"Treating '{value}' for {key_func} as string")
+                dst[key_dict] = value
+
+    # some of the config entries are dynamic, therefore need to manually merge them
+    def __load_vars__(self, dst: dict, key_base: str, key_list: str, key_dest_base: str, key_template: str, func: Callable[[str], str | None]) -> None:
+        entries = dst[key_base][key_list]
+        if not entries:
+            return
+        target = dst[key_base][key_dest_base]
+        key_dest_list: list[str] = list(target[key_template].keys())
+        for entry in entries:
+            if entry not in target:
+                target[entry] = dict()
+            for key in key_dest_list:
+                lookup = f"{self._prefix}_{key_base}_{key_dest_base}_{entry}_{key}".upper()
+                self.__load_val__(target[entry], key, lookup, func)
+
+    # update our config with key lookup lambda
+    def __merge_vars__(self, dst: dict, func: Callable[[str], str | None]) -> None:
+        self.__merge_vars_recursive__(self._prefix, dst, func)
+        # terrible hack - so sad
+        self.__load_vars__(dst, "telegram", "enabled_user_groups", "user_groups", "admins", func)
+        self.__load_vars__(dst, "hubitat", "enabled_device_groups", "device_groups", "all", func)
 
     def load(self) -> dict[str, dict]:
         ret = self.__load__(Path(__file__).with_name("template." + self._file))
@@ -56,9 +90,12 @@ class Config:
         # overwrite template with config, if exists
         config = self.__load__(Path(config_file_path))
         if config:
-            self.__merge_dict__(config, ret)
+            self.__merge_dict_recursive__(config, ret)
 
         # overwrite with environment variables, if exist
-        self.__merge_env__(self._prefix, ret)
+        self.__merge_vars__(ret, lambda key: os.getenv(key))
+
+        # overwrite with cmd line parameters, if exist
+        self.__merge_vars__(ret, lambda key: self._args.get(key))
 
         return ret

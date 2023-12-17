@@ -480,7 +480,7 @@ if sys.version_info < (SUPPORTED_PYTHON_MAJOR, SUPPORTED_PYTHON_MINOR):
     raise Exception(f"Python version {SUPPORTED_PYTHON_MAJOR}.{SUPPORTED_PYTHON_MINOR} or later required. Current version: {platform.python_version()}.")
 
 try:
-    config = Config("config.yaml", "hubibot").load()
+    config = Config("config.yaml", "hubibot", sys.argv[1:]).load()
 
     conf = config["main"]
     logging.getLogger().setLevel(logging.getLevelName(conf["logverbosity"]))
