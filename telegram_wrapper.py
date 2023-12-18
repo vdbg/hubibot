@@ -22,10 +22,23 @@ class Telegram:
         self.hubitat: Hubitat = hubitat
         self.users: dict[int, TelegramUser] = {}
         self.rejected_message: str = conf["rejected_message"]
-        for group_name, group_data in conf["user_groups"].items():
+        enabled_user_groups = conf["enabled_user_groups"]
+        if not enabled_user_groups:
+            raise ValueError("enabled_user_groups (config file) or HUBIBOT_TELEGRAM_ENABLED_USER_GROUPS (env var, cmd line param) must be set.")
+        user_groups = {k: conf["user_groups"][k] for k in enabled_user_groups}
+        if len(user_groups) != len(enabled_user_groups):
+            raise ValueError("not all groups listed in enabled_user_groups are defined.")
+        for group_name, group_data in user_groups.items():
             access_level = AccessLevel[group_data["access_level"]]
-            device_groups = [hubitat.get_device_group(name) for name in group_data["device_groups"]]
-            for id in map(int, group_data["ids"]):
+            device_group_names = group_data["device_groups"]
+            for device_group in device_group_names:
+                if device_group not in hubitat.device_groups:
+                    raise ValueError(f"Device group '{device_group}' listed in user group '{group_name}' not defined in hubitat settings")
+            device_groups = [hubitat.get_device_group(name) for name in device_group_names]
+            ids = list(map(int, group_data["ids"]))
+            if not ids:
+                raise ValueError(f"ids list for Telegram user group '{group_name}' must be set.")
+            for id in ids:
                 if id in self.users:
                     raise ValueError(f"User id {id} is referenced in both groups '{group_name}' and '{self.users[id].user_group}'.")
                 self.users[id] = TelegramUser(id, access_level, group_name, device_groups)

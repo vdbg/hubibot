@@ -1,6 +1,7 @@
 from aliases import Aliases
 from device import Device, DeviceGroup
 import logging
+
 # https://github.com/danielorf/pyhubitat
 from pyhubitat import MakerAPI
 
@@ -8,6 +9,8 @@ from pyhubitat import MakerAPI
 class Hubitat:
     def __init__(self, conf: dict):
         hub = f"{conf['url'].rstrip('/')}/apps/api/{conf['appid']}"
+        if hub == "http://ipaddress/apps/api/0":
+            raise ValueError("Hubitat's address and app ID must be set")
         logging.info(f"Connecting to hubitat Maker API app {hub}")
         self.api = MakerAPI(conf["token"], hub)
         self.device_groups: dict[str, DeviceGroup] = {}
@@ -20,7 +23,13 @@ class Hubitat:
         # because Python doesn't support case insensitive searches
         # and Hubitats requires exact case, we create a dict{lowercase,requestedcase}
         self.hsm_arm: dict[str, str] = {x.lower(): x for x in conf["hsm_arm_values"]}
-        for name, data in conf["device_groups"].items():
+        enabled_device_groups = conf["enabled_device_groups"]
+        if not enabled_device_groups:
+            raise ValueError("enabled_device_groups (config file) or HUBIBOT_HUBITAT_ENABLED_DEVICE_GROUPS (env var, cmd line param) must be set.")
+        device_groups = {k: conf["device_groups"][k] for k in enabled_device_groups}
+        if len(device_groups) != len(enabled_device_groups):
+            raise ValueError("not all groups listed in enabled_device_groups are defined.")
+        for name, data in device_groups.items():
             self.device_groups[name] = DeviceGroup(name, data, self)
         if not self.device_groups:
             raise Exception("At least one device group must be specified in the config file.")
