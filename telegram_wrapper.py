@@ -2,7 +2,7 @@ from accesslevel import AccessLevel
 from device import DeviceGroup
 from hubitat import Hubitat
 import logging
-from telegram.ext import Updater
+from telegram.ext import Application
 
 
 class TelegramUser:
@@ -42,8 +42,8 @@ class Telegram:
                 if id in self.users:
                     raise ValueError(f"User id {id} is referenced in both groups '{group_name}' and '{self.users[id].user_group}'.")
                 self.users[id] = TelegramUser(id, access_level, group_name, device_groups)
-        self.updater = Updater(token=conf["token"], use_context=True)
-        self.dispatcher = self.updater.dispatcher
+
+        self.application = Application.builder().token(conf["token"]).build()
 
     def get_user(self, id: int) -> TelegramUser:
         return self.users[id]
