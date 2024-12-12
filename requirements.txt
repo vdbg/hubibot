@@ -1,5 +1,4 @@
-# Version 20.0 has many breaking changes
-# https://github.com/python-telegram-bot/python-telegram-bot/wiki/Transition-guide-to-Version-20.0
-python-telegram-bot<20.0
+python-telegram-bot
 pyhubitat
+pytz
 pyyaml
