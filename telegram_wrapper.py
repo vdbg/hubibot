@@ -22,6 +22,7 @@ class Telegram:
         self.hubitat: Hubitat = hubitat
         self.users: dict[int, TelegramUser] = {}
         self.rejected_message: str = conf["rejected_message"]
+        self.start_message: str = conf["start_message"]
         enabled_user_groups = conf["enabled_user_groups"]
         if not enabled_user_groups:
             raise ValueError("enabled_user_groups (config file) or HUBIBOT_TELEGRAM_ENABLED_USER_GROUPS (env var, cmd line param) must be set.")
