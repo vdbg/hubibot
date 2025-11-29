@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 from datetime import datetime
+from multiprocessing import context
 from device import Device, DeviceGroup
 from hubitat import Hubitat
 import logging
@@ -11,7 +12,7 @@ import sys
 import threading
 
 # https://github.com/python-telegram-bot/python-telegram-bot
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
@@ -53,11 +54,11 @@ class HubiBot:
 
     def add_command(self, cmd: list, hlp: str, fn, access_level: AccessLevel, params: str = "") -> None:
         helptxt = ""
-        for str in cmd:
+        for cmd_name in cmd:
             if helptxt:
                 helptxt = helptxt + ", "
-            helptxt = helptxt + "/" + str
-            self.telegram.application.add_handler(CommandHandler(str, fn, self.get_user_filter()))
+            helptxt = helptxt + "/" + cmd_name
+            self.telegram.application.add_handler(CommandHandler(cmd_name, fn, self.get_user_filter()))
         if params:
             helptxt = helptxt + " `" + params + "`"
         helptxt = helptxt + ": " + hlp
@@ -90,12 +91,14 @@ class HubiBot:
         return context.user_data.get("tz", "") if context.user_data else ""
 
     def set_timezone(self, context: CallbackContext, value: str) -> None:
+        if not context.user_data:
+            context.user_data = {}
         context.user_data["tz"] = value
 
     def get_user(self, update: Update) -> TelegramUser:
         if not update.effective_user:
             logging.warning("How did a nobody get through?")
-            return TelegramUser(-1, AccessLevel.NONE, "", list())
+            return self.telegram.nobody
         return self.telegram.get_user(update.effective_user.id)
 
     def has_access(self, update: Update, access_level: AccessLevel) -> bool:
@@ -111,14 +114,14 @@ class HubiBot:
             command = command + " " + device.label
         logging.info(f"{self.get_user_info(update)} is sending command: {command}")
 
-    def request_access(self, update: Update, context: CallbackContext, access_level: AccessLevel) -> None:
+    async def request_access(self, update: Update, context: CallbackContext, access_level: AccessLevel) -> None:
         if not self.has_access(update, access_level):
             # user attempting to use admin/device/security command without perm, pretend it doesn't exist
-            self.command_unknown(update, context)
+            await self.command_unknown(update, context)
             raise PermissionError(f"{self.get_user_info(update)} is attempting level {access_level} command without permission.")
 
     async def device_actuator(self, update: Update, context: CallbackContext, command: Union[str, list], bot_command: str, message: str, access_level=AccessLevel.DEVICE) -> None:
-        self.request_access(update, context, access_level)
+        await self.request_access(update, context, access_level)
         for device in await self.get_devices(update, context):
             supported_commands = device.supported_commands
             if bot_command not in supported_commands:
@@ -133,7 +136,7 @@ class HubiBot:
             await self.send_text(update, context, message.format(device.label))
 
     async def command_device_info(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.DEVICE)
+        await self.request_access(update, context, AccessLevel.DEVICE)
         for device in await self.get_devices(update, context):
             info = self.hubitat.api.get_device_info(device.id)
             self.log_command(update, "/info", device)
@@ -145,7 +148,7 @@ class HubiBot:
             await self.send_md(update, context, [f"*{k}*: `{v}`" for k, v in info.items()])
 
     async def command_refresh(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.ADMIN)
+        await self.request_access(update, context, AccessLevel.ADMIN)
         self.hubitat.refresh_devices()
         await self.send_text(update, context, "Refresh completed.")
 
@@ -154,7 +157,7 @@ class HubiBot:
         await self.command_help(update, context)
 
     async def command_device_status(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.DEVICE)
+        await self.request_access(update, context, AccessLevel.DEVICE)
         for device in await self.get_devices(update, context):
             self.log_command(update, "/status", device)
             status = self.hubitat.api.device_status(device.id)
@@ -195,7 +198,7 @@ class HubiBot:
         await self.get_device_events(update, context, False)
 
     async def get_device_events(self, update: Update, context: CallbackContext, last_only: bool) -> None:
-        self.request_access(update, context, AccessLevel.SECURITY)
+        await self.request_access(update, context, AccessLevel.SECURITY)
         for device in await self.get_devices(update, context):
             self.log_command(update, "/events", device)
             events = self.hubitat.api.get_device_events(device.id)
@@ -245,7 +248,7 @@ class HubiBot:
         await self.command_help(update, context)
 
     async def list_devices(self, update: Update, context: CallbackContext, devices: list[Device], title: str | None):
-        self.request_access(update, context, AccessLevel.DEVICE)
+        await self.request_access(update, context, AccessLevel.DEVICE)
         devices_text = []
 
         def get_description(device: Device) -> str:
@@ -267,7 +270,7 @@ class HubiBot:
         await self.send_md(update, context, devices_text)
 
     async def command_list_devices(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.DEVICE)
+        await self.request_access(update, context, AccessLevel.DEVICE)
         device_groups: list[DeviceGroup] = self.get_user(update).device_groups
         device_filter: str = self.get_single_arg(context)
         devices = set()
@@ -279,14 +282,14 @@ class HubiBot:
         await self.list_devices(update, context, list(devices), None)
 
     async def command_regex_list_devices(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.DEVICE)
+        await self.request_access(update, context, AccessLevel.DEVICE)
         device_groups: list[DeviceGroup] = self.get_user(update).device_groups
         device_filter: str = self.get_single_arg(context)
         devices = self.hubitat.resolve_devices(device_filter, device_groups)
         await self.list_devices(update, context, list(devices), None)
 
     async def command_list_groups(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.ADMIN)
+        await self.request_access(update, context, AccessLevel.ADMIN)
 
         group_filter = self.get_single_arg(context)
         for group in self.hubitat.get_device_groups():
@@ -294,11 +297,11 @@ class HubiBot:
                 await self.list_devices(update, context, list(group.get_devices().values()), f"Devices in *{group.name}*:")
 
     async def command_help(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.NONE)  # Technically not needed
+        await self.request_access(update, context, AccessLevel.NONE)  # Technically not needed
         await self.send_md(update, context, self.list_commands[self.get_user(update).access_level])
 
     async def command_unknown_user(self, update: Update, context: CallbackContext) -> None:
-        logging.warning(f"Unknown {self.get_user_info(update)} is attempting to use the bot.")
+        logging.error(f"Unknown {self.get_user_info(update)} is attempting to use the bot.")
         await self.send_text(update, context, self.telegram.rejected_message)
 
     async def command_device_on(self, update: Update, context: CallbackContext) -> None:
@@ -320,7 +323,7 @@ class HubiBot:
         await self.device_actuator(update, context, "unlock", "/unlock", "Unlocked {}.", access_level=AccessLevel.SECURITY)
 
     async def command_list_users(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.ADMIN)
+        await self.request_access(update, context, AccessLevel.ADMIN)
 
         def row(id, isAdmin, userGroup, deviceGroup) -> str:
             return f"{id :10}|{isAdmin :5}|{userGroup :10}|{deviceGroup}"
@@ -339,7 +342,7 @@ class HubiBot:
         return percent if 100 >= percent >= 0 else None
 
     async def command_device_dim(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.DEVICE)
+        await self.request_access(update, context, AccessLevel.DEVICE)
         if not context.args or len(context.args) < 2:
             await self.send_text(update, context, "Dim level and device name must be specified.")
             return
@@ -351,7 +354,7 @@ class HubiBot:
         await self.device_actuator(update, context, ["setLevel", percent], "/dim", "Dimmed {} to " + str(percent) + "%")
 
     async def command_mode(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.SECURITY)
+        await self.request_access(update, context, AccessLevel.SECURITY)
         modes = self.hubitat.api._request_sender("modes").json()
         mode_requested = self.get_single_arg(context)
         if mode_requested:
@@ -374,7 +377,7 @@ class HubiBot:
         await self.send_text(update, context, ", ".join(text))
 
     async def command_hsm(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.SECURITY)
+        await self.request_access(update, context, AccessLevel.SECURITY)
         command = self.get_single_arg(context)
         if command:
             # mode change requested
@@ -390,7 +393,7 @@ class HubiBot:
             await self.send_text(update, context, f"State: {state['hsm']}")
 
     async def command_exit(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.SECURITY)
+        await self.request_access(update, context, AccessLevel.SECURITY)
         keyboard = [
             [
                 InlineKeyboardButton("Yes", callback_data="Exit_Yes"),
@@ -399,31 +402,34 @@ class HubiBot:
             [InlineKeyboardButton("More information", callback_data="Exit_Help")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
+        if not update.message:
+            logging.error("command_exit called without message?")
+            return
         await update.message.reply_text("Are you sure you want to exit the bot?", reply_markup=reply_markup)
 
-    def shutdown_hack(self):
-        # this needs to be on a separate thread because otherwise updater.stop() deadlocks
-        self.telegram.application.stop()
-
     async def button_press(self, update: Update, context: CallbackContext) -> None:
-        self.request_access(update, context, AccessLevel.SECURITY)
+        await self.request_access(update, context, AccessLevel.SECURITY)
 
-        query = update.callback_query
+        if not update.callback_query:
+            logging.error("button_press called without callback_query?")
+            return 
+
+        query: CallbackQuery = update.callback_query
         await query.answer()
 
-        if query.data == "Exit_Help":
-            await query.edit_message_text(text="This will terminate the bot process. To autorestart, use forever if started from command line or '--restart=always' if started in a Docker container.")
-            return
-
-        if query.data == "Exit_Yes":
-            await query.edit_message_text(text="Terminating the bot.")
-            # threading.Thread(target=self.shutdown_hack).start()
-            await self.telegram.application.stop()
-            return
-
-        if query.data == "Exit_No":
-            await query.edit_message_text(text="Not terminating the bot.")
-            return
+        match query.data:
+            case "Exit_Help":
+                await query.edit_message_text(text="This will terminate the bot process. To autorestart, use forever if started from command line or '--restart=always' if started in a Docker container.")
+                return
+            case "Exit_Yes":
+                await query.edit_message_text(text="Terminating the bot.")
+                context.application.update_queue.put_nowait(None)
+                logging.warning("Shutting down bot as per user request.")
+                context.application.stop_running()
+                return
+            case "Exit_No":
+                await query.edit_message_text(text="Not terminating the bot.")
+                return
 
     async def error_handler(self, update: object, context: CallbackContext) -> None:
         logging.error(msg="Exception while handling an update:", exc_info=context.error)
@@ -493,6 +499,7 @@ try:
     hal = HubiBot(telegram, hubitat, default_timezone)
     hal.configure()
     hal.run()
+    logging.warning("Bot shutting down.")
 
     exit(0)
 

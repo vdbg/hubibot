@@ -14,7 +14,7 @@ class Config:
         for arg in args:
             key_value = arg.split("=", 1)
             if len(key_value) != 2 or not key_value[0].startswith(self._prefix):
-                logging.warning(f"Ignoring '{arg}' as it's not in the expected format '{self._prefix}_KEY=value")
+                logging.warning(f"Ignoring '{arg}' as it's not in the expected format '{self._prefix}_KEY=value'")
                 continue
             self._args[key_value[0]] = key_value[1]
 
@@ -51,8 +51,9 @@ class Config:
         if value:
             try:
                 dst[key_dict] = ast.literal_eval(value)
-            except ValueError:
-                logging.warn(f"Treating '{value}' for {key_func} as string")
+            except Exception:
+                # literal_eval may raise ValueError or SyntaxError; treat as string if parsing fails
+                logging.warning(f"Treating '{value}' for {key_func} as string")
                 dst[key_dict] = value
 
     # some of the config entries are dynamic, therefore need to manually merge them
