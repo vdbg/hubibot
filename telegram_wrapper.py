@@ -22,6 +22,7 @@ class Telegram:
         self.hubitat: Hubitat = hubitat
         self.users: dict[int, TelegramUser] = {}
         self.rejected_message: str = conf["rejected_message"]
+        self.start_message: str = conf["start_message"]
         self.nobody = TelegramUser(-1, AccessLevel.NONE, "nobody", []) # default user for unknown ids
         enabled_user_groups = conf["enabled_user_groups"]
         if not enabled_user_groups:

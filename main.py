@@ -299,6 +299,10 @@ class HubiBot:
         await self.request_access(update, context, AccessLevel.NONE)  # Technically not needed
         await self.send_md(update, context, self.list_commands[self.get_user(update).access_level])
 
+    async def command_start(self, update: Update, context: CallbackContext) -> None:
+        self.request_access(update, context, AccessLevel.NONE)  # Technically not needed
+        await self.send_md(update, context, self.telegram.start_message)
+
     async def command_unknown_user(self, update: Update, context: CallbackContext) -> None:
         logging.error(f"Unknown {self.get_user_info(update)} is attempting to use the bot.")
         await self.send_text(update, context, self.telegram.rejected_message)
@@ -462,6 +466,7 @@ class HubiBot:
         self.add_command(["open"], "open device `name`", self.command_device_open, AccessLevel.DEVICE, params="name")
         self.add_command(["refresh", "r"], "refresh list of devices", self.command_refresh, AccessLevel.ADMIN)
         self.add_command(["status", "s"], "get status of device `name`", self.command_device_status, AccessLevel.DEVICE, params="name")
+        self.add_command(["start", "s"], "start command", self.command_start, AccessLevel.NONE)
         self.add_command(["timezone", "tz"], "get timezone or set it to `value`", self.command_timezone, AccessLevel.SECURITY, params="value")
         self.add_command(["unlock"], "unlock device `name`", self.command_device_unlock, AccessLevel.SECURITY, params="name")
         self.add_command(["users", "u"], "get users", self.command_list_users, AccessLevel.ADMIN)

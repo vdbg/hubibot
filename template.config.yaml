@@ -10,7 +10,8 @@
 
 telegram:
   token: 'enter your telegram token here'  # Search for Botfather in your favorite search engine for instructions
-  rejected_message: "Unauthorized user :p" # Message to return to users not in any group when talking to the bot. Empty string for silently ignoring them instead 
+  rejected_message: "Unauthorized user :p" # Message to return to users not in any group when talking to the bot. Empty string for silently ignoring them instead
+  start_message: "Type /help for a list of commands." # Message sent to users when they first start a chat with the bot
   enabled_user_groups: [ ]         # List of enabled user groups. If empty, none are enabled.
   user_groups:                     # See README.md for explanation on user groups
     # There can be any number of user groups and their names (e.g. admins, family, guests) are free-form
