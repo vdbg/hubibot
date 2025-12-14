@@ -134,7 +134,7 @@ Dependency: Docker installed.
 
 ### Running directly on the device
 
-Dependency: [Python](https://www.python.org/) 3.9+ and pip3 installed.
+Dependency: [Python](https://www.python.org/) 3.11+ and pip3 installed.
 
 1. `git clone https://github.com/vdbg/hubibot.git`
 2. `cd hubibot`
