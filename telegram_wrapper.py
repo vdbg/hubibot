@@ -22,6 +22,7 @@ class Telegram:
         self.hubitat: Hubitat = hubitat
         self.users: dict[int, TelegramUser] = {}
         self.rejected_message: str = conf["rejected_message"]
+        self.nobody = TelegramUser(-1, AccessLevel.NONE, "nobody", []) # default user for unknown ids
         enabled_user_groups = conf["enabled_user_groups"]
         if not enabled_user_groups:
             raise ValueError("enabled_user_groups (config file) or HUBIBOT_TELEGRAM_ENABLED_USER_GROUPS (env var, cmd line param) must be set.")
@@ -46,4 +47,9 @@ class Telegram:
         self.application = Application.builder().token(conf["token"]).build()
 
     def get_user(self, id: int) -> TelegramUser:
-        return self.users[id]
+        # Return a default non-authorized user if id not present to avoid KeyError in callers
+        user = self.users.get(id)
+        if user is None:
+            logging.error(f"Requested Telegram user id {id} not found in configured users.")
+            return self.nobody
+        return user
